@@ -191,6 +191,11 @@ function DlButton(props){
 
   function handleClick(){
     if(downloading) return;
+    // External fallback links — just open in new tab
+    if(props.quality==="↗"){
+      window.open(props.url,"_blank","noopener,noreferrer");
+      return;
+    }
     var isMP3 = props.quality==="MP3"||props.quality==="320kbps"||(props.label||"").toLowerCase().indexOf("mp3")>-1;
     var ext = isMP3 ? ".mp3" : ".mp4";
     // Use provided filename (with real title) or fallback
@@ -207,24 +212,26 @@ function DlButton(props){
     );
   }
 
+  var isExternal = props.quality==="↗";
   return e("button",{
     onClick:handleClick,
     disabled:downloading,
     className:"dl-btn",
     style:{
       display:"flex",alignItems:"center",justifyContent:"space-between",
-      background:downloading?"rgba(16,185,129,.4)":"linear-gradient(135deg,#10B981,#059669)",
+      background:isExternal?"rgba(99,102,241,.15)":downloading?"rgba(16,185,129,.4)":"linear-gradient(135deg,#10B981,#059669)",
       borderRadius:10,color:"#fff",padding:"14px 18px",
-      border:"none",width:"100%",cursor:downloading?"not-allowed":"pointer",
+      border:isExternal?"1px solid rgba(99,102,241,.4)":"none",
+      width:"100%",cursor:downloading?"not-allowed":"pointer",
       fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14,
       transition:"all .2s",
     }
   },
     e("span",{style:{display:"flex",alignItems:"center",gap:8}},
-      downloading ? e("span",{className:"dlspin",style:{fontSize:16}},"⟳") : e("span",null,"⬇"),
-      downloading ? "Baixando..." : "⬇ "+props.label
+      downloading ? e("span",{className:"dlspin",style:{fontSize:16}},"⟳") : e("span",null,isExternal?"↗":"⬇"),
+      downloading ? "Baixando..." : (isExternal?"🔗 ":"")+props.label
     ),
-    e("span",{style:{background:"rgba(255,255,255,.2)",borderRadius:6,padding:"2px 8px",fontSize:11}},
+    e("span",{style:{background:isExternal?"rgba(99,102,241,.25)":"rgba(255,255,255,.2)",borderRadius:6,padding:"2px 8px",fontSize:11}},
       props.quality)
   );
 }
@@ -335,144 +342,165 @@ function App(){
     });
   }
 
-  /* ── YouTube MP4 ──
-     Strategy 1: RapidAPI yt-api (via CORS proxy)
-     Strategy 2: Invidious public API (no key needed, CORS-enabled)
-     Strategy 3: Cobalt API (free, open-source, CORS-safe)
-  ── */
+  /* ══ YouTube MP4 — pipeline de 4 estratégias ══
+     1. loader.to  (API pública ajax, sem CORS issues)
+     2. Invidious  (instâncias em série, não aleatório)
+     3. RapidAPI   (via allorigins proxy)
+     4. Fallback UI para download manual via y2mate / savefrom
+  ════════════════════════════════════════════════ */
   function doMP4(){
     var vid=getYTId(url);
     if(!vid){ setErr("ID do vídeo não encontrado."); return; }
-    setLoad("Buscando vídeo... 🎬");
+    setLoad("Iniciando busca... 🎬");
 
-    // Strategy 1: RapidAPI via proxy
+    /* ── Strategy 1: loader.to ── */
+    function tryLoaderTo(){
+      // Step 1: convert
+      return fetch("https://loader.to/ajax/download.php?format="+qual.replace("p","")+"&url="+encodeURIComponent("https://www.youtube.com/watch?v="+vid), {
+        method:"GET", headers:{Accept:"application/json"}
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(!d.id) throw new Error("loader.to: no id");
+        var jobId = d.id;
+        // Step 2: poll progress
+        function poll(tries){
+          return fetch("https://loader.to/ajax/progress.php?id="+jobId)
+            .then(function(r){ return r.json(); })
+            .then(function(p){
+              console.log("loader.to progress:", JSON.stringify(p).slice(0,200));
+              if(p.download_url) return {_direct:true, url:p.download_url, quality:qual, title:p.title||"Vídeo"};
+              if(p.success&&p.text){
+                // parse link from text
+                var m = p.text.match(/href="([^"]+)"/);
+                if(m) return {_direct:true, url:m[1], quality:qual, title:p.title||"Vídeo"};
+              }
+              if(tries<=0) throw new Error("loader.to timeout");
+              setMsg("Processando vídeo... "+(p.progress||"")+"% ⏳");
+              return new Promise(function(res){ setTimeout(function(){ res(poll(tries-1)); }, 2500); });
+            });
+        }
+        return poll(14);
+      });
+    }
+
+    /* ── Strategy 2: Invidious (tenta cada instância em série) ── */
+    var INV = [
+      "https://invidious.fdn.fr",
+      "https://inv.nadeko.net",
+      "https://invidious.nerdvpn.de",
+      "https://iv.datura.network",
+      "https://invidious.privacydev.net",
+    ];
+    function tryInvidiousSeries(idx){
+      if(idx>=INV.length) return Promise.reject(new Error("Todas instâncias Invidious falharam"));
+      var inst = INV[idx];
+      return fetch(inst+"/api/v1/videos/"+vid+"?fields=title,adaptiveFormats,formatStreams", {signal:AbortSignal.timeout(8000)})
+        .then(function(r){
+          if(!r.ok) throw new Error(inst+" HTTP "+r.status);
+          return r.json();
+        })
+        .then(function(data){
+          if(!data||(!data.formatStreams&&!data.adaptiveFormats)) throw new Error("empty");
+          var formats=(data.formatStreams||[]).map(function(f){
+            return {url:f.url,mimeType:f.type||"video/mp4",qualityLabel:f.qualityLabel||f.quality,itag:f.itag};
+          });
+          var adaptive=(data.adaptiveFormats||[]).map(function(f){
+            return {url:f.url,mimeType:f.type||"",qualityLabel:f.qualityLabel||f.quality,audioQuality:f.audioQuality,itag:f.itag};
+          });
+          return {title:data.title||"Vídeo",formats:formats,adaptiveFormats:adaptive};
+        })
+        .catch(function(e){
+          console.warn("Invidious "+inst+" falhou:", e.message);
+          return tryInvidiousSeries(idx+1);
+        });
+    }
+
+    /* ── Strategy 3: RapidAPI via allorigins ── */
     function tryRapidAPI(){
       return rapidFetch(YTAPI_HOST, "/dl?id="+encodeURIComponent(vid))
         .then(function(r){return r.json();})
         .then(function(data){
-          if(!data || (!data.formats && !data.adaptiveFormats && !data.title))
-            throw new Error("empty response");
+          if(!data||(Object.keys(data).length<2)) throw new Error("empty rapid response");
           return data;
         });
     }
 
-    // Strategy 2: Invidious (public CORS-enabled YouTube API)
-    var INVIDIOUS_INSTANCES = [
-      "https://iv.datura.network",
-      "https://invidious.privacydev.net",
-      "https://yt.cdaut.de",
-    ];
-    function tryInvidious(){
-      var inst = INVIDIOUS_INSTANCES[Math.floor(Math.random()*INVIDIOUS_INSTANCES.length)];
-      return fetch(inst+"/api/v1/videos/"+vid+"?fields=title,adaptiveFormats,formatStreams")
-        .then(function(r){
-          if(!r.ok) throw new Error("Invidious HTTP "+r.status);
-          return r.json();
-        })
-        .then(function(data){
-          // Normalize to same shape as yt-api
-          var formats = (data.formatStreams||[]).map(function(f){
-            return {url:f.url, mimeType:f.type||"video/mp4", qualityLabel:f.qualityLabel||f.quality, itag:f.itag};
-          });
-          var adaptive = (data.adaptiveFormats||[]).map(function(f){
-            return {url:f.url, mimeType:f.type||"", qualityLabel:f.qualityLabel||f.quality, audioQuality:f.audioQuality, itag:f.itag};
-          });
-          return {title:data.title||"Vídeo", formats:formats, adaptiveFormats:adaptive};
-        });
-    }
-
-    // Strategy 3: cobalt.tools API (open source, CORS-safe)
-    function tryCobalt(){
-      return fetch("https://api.cobalt.tools/", {
-        method:"POST",
-        headers:{"Content-Type":"application/json","Accept":"application/json"},
-        body:JSON.stringify({url:url, videoQuality:qual.replace("p",""), filenameStyle:"basic"})
-      }).then(function(r){ return r.json(); })
-        .then(function(data){
-          if(data.status==="stream"||data.status==="redirect"){
-            var dlUrl = data.url||data.tunnel;
-            if(dlUrl) return {_cobalt:true, url:dlUrl, quality:qual};
-          }
-          if(data.status==="picker"&&data.picker){
-            var v = data.picker.find(function(p){ return p.type==="video"; });
-            if(v&&v.url) return {_cobalt:true, url:v.url, quality:qual};
-          }
-          throw new Error("Cobalt: "+JSON.stringify(data).slice(0,200));
-        });
-    }
-
+    /* ── processYTData: normaliza formatos e despacha ── */
     function processYTData(data){
       var title = data.title||"Vídeo";
 
-      // Cobalt shortcut
-      if(data._cobalt){
-        finish([{label:"Baixar "+data.quality+" (vídeo+áudio)", url:data.url, quality:data.quality}],
+      if(data._direct){
+        finish([{label:"⬇ Baixar "+data.quality+" (vídeo+áudio)", url:data.url, quality:data.quality}],
                title+" · MP4 · YouTube");
         return;
       }
 
-      var muxed=[];
-      if(Array.isArray(data.formats)){
-        data.formats.forEach(function(f){
-          if(f.url&&(f.mimeType||"").indexOf("video/mp4")>-1&&f.qualityLabel)
-            muxed.push({itag:f.itag,url:f.url,quality:f.qualityLabel,hasAudio:true});
-        });
-      }
-      var videoOnly=[];
-      var audioOnly=[];
-      if(Array.isArray(data.adaptiveFormats)){
-        data.adaptiveFormats.forEach(function(f){
-          var mime=f.mimeType||"";
-          if(f.url&&mime.indexOf("video/mp4")>-1&&f.qualityLabel)
-            videoOnly.push({itag:f.itag,url:f.url,quality:f.qualityLabel});
-          if(f.url&&(mime.indexOf("audio/mp4")>-1||mime.indexOf("audio/webm")>-1))
-            audioOnly.push({itag:f.itag,url:f.url,quality:f.audioQuality||"medium"});
-        });
-      }
+      var muxed=[], videoOnly=[], audioOnly=[];
+      (data.formats||[]).forEach(function(f){
+        if(f.url&&(f.mimeType||"").indexOf("video/mp4")>-1&&f.qualityLabel)
+          muxed.push({url:f.url,quality:f.qualityLabel});
+      });
+      (data.adaptiveFormats||[]).forEach(function(f){
+        var mime=f.mimeType||"";
+        if(f.url&&mime.indexOf("video/mp4")>-1&&f.qualityLabel)
+          videoOnly.push({url:f.url,quality:f.qualityLabel});
+        if(f.url&&(mime.indexOf("audio/mp4")>-1||mime.indexOf("audio/webm")>-1))
+          audioOnly.push({url:f.url,quality:f.audioQuality||"medium"});
+      });
 
-      console.log("muxed:", muxed.length, "videoOnly:", videoOnly.length, "audioOnly:", audioOnly.length);
-
-      var exactMuxed = muxed.filter(function(f){ return f.quality.indexOf(qual)>-1; });
+      var exactMuxed=muxed.filter(function(f){return f.quality.indexOf(qual)>-1;});
       if(exactMuxed.length){
         finish(dedupeLinks(exactMuxed.map(function(f){
-          return {label:"Baixar "+f.quality+" (vídeo+áudio)", url:f.url, quality:f.quality};
+          return {label:"Baixar "+f.quality+" (vídeo+áudio)",url:f.url,quality:f.quality};
         })), title+" · MP4 · YouTube");
         return;
       }
-
-      var targetVideo = videoOnly.filter(function(f){ return f.quality.indexOf(qual)>-1; });
-      if(!targetVideo.length) targetVideo = videoOnly.slice(0,3);
-      var bestAudio = audioOnly.length ? audioOnly[0] : null;
-      var bestVideoUrl = targetVideo.length ? targetVideo[0].url : null;
-
-      if(bestVideoUrl && bestAudio){
-        doFFmpegMerge(bestVideoUrl, bestAudio.url, qual, title);
-      } else if(muxed.length){
-        finish(dedupeLinks(muxed.map(function(f){
-          return {label:"Baixar "+f.quality+" (vídeo+áudio)", url:f.url, quality:f.quality};
-        })).slice(0,2), title+" · MP4");
-      } else {
-        setErr("Não foi possível obter streams. Tente outra qualidade ou use o Cobalt.");
+      var targetVid=videoOnly.filter(function(f){return f.quality.indexOf(qual)>-1;});
+      if(!targetVid.length) targetVid=videoOnly.slice(0,2);
+      var bestAudio=audioOnly[0]||null;
+      if(targetVid.length&&bestAudio){
+        doFFmpegMerge(targetVid[0].url,bestAudio.url,qual,title); return;
       }
+      if(muxed.length){
+        finish(dedupeLinks(muxed.map(function(f){
+          return {label:"Baixar "+f.quality,url:f.url,quality:f.quality};
+        })).slice(0,3), title+" · MP4");
+        return;
+      }
+      throw new Error("sem streams");
     }
 
-    // Run strategies in sequence
-    setMsg("Tentando buscar vídeo... (1/3)");
-    tryRapidAPI()
+    /* ── Strategy 4: fallback UI ── */
+    function showFallbackUI(){
+      var ytUrl = "https://www.youtube.com/watch?v="+vid;
+      setPhase("done"); setMsg(null);
+      setItems([
+        {label:"Abrir no SaveFrom.net", url:"https://en.savefrom.net/#url="+encodeURIComponent(ytUrl), quality:"↗"},
+        {label:"Abrir no Y2Mate",       url:"https://www.y2mate.com/youtube/"+vid,                    quality:"↗"},
+        {label:"Abrir no cobalt.tools", url:"https://cobalt.tools/?u="+encodeURIComponent(ytUrl),     quality:"↗"},
+      ]);
+      setSub("Baixe via um desses serviços externos ↗");
+      setMtype("warn");
+    }
+
+    /* ── Sequência principal ── */
+    setMsg("Tentando loader.to... (1/3) ⏳");
+    tryLoaderTo()
       .then(processYTData)
       .catch(function(e1){
-        console.warn("RapidAPI falhou:", e1.message, "— tentando Invidious...");
-        setMsg("Tentativa alternativa... (2/3) ⏳");
-        return tryInvidious()
+        console.warn("loader.to falhou:", e1.message);
+        setMsg("Tentando Invidious... (2/3) ⏳");
+        return tryInvidiousSeries(0)
           .then(processYTData)
           .catch(function(e2){
-            console.warn("Invidious falhou:", e2.message, "— tentando Cobalt...");
-            setMsg("Última tentativa... (3/3) ⏳");
-            return tryCobalt()
+            console.warn("Invidious falhou:", e2.message);
+            setMsg("Tentando RapidAPI... (3/3) ⏳");
+            return tryRapidAPI()
               .then(processYTData)
               .catch(function(e3){
-                console.error("Todas as estratégias falharam:", e1.message, e2.message, e3.message);
-                setErr("Não foi possível buscar o vídeo. Tente: 1) Usar MP3 ao invés de MP4, 2) Abrir em aba anônima, 3) Usar VPN ou outro navegador.");
+                console.error("Todas falharam:", e1.message, e2.message, e3.message);
+                showFallbackUI();
               });
           });
       });
