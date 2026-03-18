@@ -48,6 +48,7 @@ var MP3_HOST   = "youtube-mp36.p.rapidapi.com";
 var YTAPI_HOST = "yt-api.p.rapidapi.com";
 var INSTA_HOST = "instagram-downloader-download-instagram-videos-stories1.p.rapidapi.com";
 var TIKTOK_HOST= "tiktok-scraper7.p.rapidapi.com";
+var TIKTOK2_HOST="tiktok-download-without-watermark.p.rapidapi.com";
 /* ══════════════ */
 
 var e=React.createElement, F=React.Fragment;
@@ -275,26 +276,34 @@ function App(){
   function doMP4(){
     var vid=getYTId(url);
     if(!vid){ setErr("ID do vídeo não encontrado."); return; }
-    setLoad("Buscando formatos de vídeo... 🎬");
+    setLoad("Buscando formatos de vídeo com áudio... 🎬");
     fetch("https://"+YTAPI_HOST+"/dl?id="+encodeURIComponent(vid),{method:"GET",headers:hdr(YTAPI_HOST)})
       .then(function(r){return r.json();})
       .then(function(data){
-        console.log("YT MP4:",JSON.stringify(data).slice(0,600));
-        var links=[];
-        function tryAdd(arr){
-          if(!Array.isArray(arr)) return;
-          arr.forEach(function(f){
+        console.log("YT MP4:",JSON.stringify(data).slice(0,800));
+
+        // MUXED = video + audio together (data.formats)
+        var muxed=[];
+        if(data&&Array.isArray(data.formats)){
+          data.formats.forEach(function(f){
             if(f.url&&(f.mimeType||"").indexOf("video/mp4")>-1&&f.qualityLabel)
-              links.push({label:"Baixar "+f.qualityLabel,url:f.url,quality:f.qualityLabel});
+              muxed.push({label:"Baixar "+f.qualityLabel+" (vídeo+áudio)",url:f.url,quality:f.qualityLabel});
           });
         }
-        if(data&&data.formats) tryAdd(data.formats);
-        if(data&&data.adaptiveFormats) tryAdd(data.adaptiveFormats);
-        if(!links.length&&data&&data.url) links.push({label:"Baixar Vídeo",url:data.url,quality:"HD"});
 
-        // filter to selected quality, or show all deduped
-        var pref=links.filter(function(l){return l.quality&&l.quality.indexOf(qual)>-1;});
-        var raw=pref.length?pref:links;
+        // Use muxed first; fall back to adaptive only if nothing found
+        var pool=muxed.length?muxed:[];
+
+        // if still empty try adaptive (video-only as last resort)
+        if(!pool.length&&data&&Array.isArray(data.adaptiveFormats)){
+          data.adaptiveFormats.forEach(function(f){
+            if(f.url&&(f.mimeType||"").indexOf("video/mp4")>-1&&f.qualityLabel)
+              pool.push({label:"Baixar "+f.qualityLabel,url:f.url,quality:f.qualityLabel});
+          });
+        }
+
+        var pref=pool.filter(function(l){return l.quality&&l.quality.indexOf(qual)>-1;});
+        var raw=pref.length?pref:pool;
         var deduped=dedupeLinks(raw).slice(0,3);
 
         if(deduped.length){
@@ -305,14 +314,17 @@ function App(){
             .then(function(d2){
               var lks=[];
               if(d2&&d2.streamingData){
-                var arr=(d2.streamingData.formats||[]).concat(d2.streamingData.adaptiveFormats||[]);
+                // prefer muxed formats first
+                var mux2=d2.streamingData.formats||[];
+                var adp2=d2.streamingData.adaptiveFormats||[];
+                var arr=mux2.length?mux2:adp2;
                 arr.forEach(function(f){
                   if(f.url&&(f.mimeType||"").indexOf("video/mp4")>-1&&f.qualityLabel)
-                    lks.push({label:"Baixar "+f.qualityLabel,url:f.url,quality:f.qualityLabel});
+                    lks.push({label:"Baixar "+f.qualityLabel+(mux2.length?" (vídeo+áudio)":""),url:f.url,quality:f.qualityLabel});
                 });
               }
               if(lks.length) finish(dedupeLinks(lks).slice(0,3),(d2.videoDetails&&d2.videoDetails.title||"Vídeo")+" · MP4");
-              else setErr("Não foi possível obter links. Tente outro vídeo ou qualidade.");
+              else setErr("Não foi possível obter links. Tente MP3 ou outra qualidade.");
             }).catch(function(){ setErr("Erro ao buscar formatos."); });
         }
       }).catch(function(){ setErr("Erro de rede."); });
@@ -347,61 +359,71 @@ function App(){
   function doTikTok(){
     setLoad("Buscando vídeo do TikTok... ♪");
 
-    // Clean URL: remove query params, keep only the base video URL
+    // Clean URL: strip all query params
     var cleanUrl = url.split("?")[0].split("&")[0];
-    // Ensure it ends cleanly after the video ID
     var vidMatch = cleanUrl.match(/(https:\/\/www\.tiktok\.com\/@[^\/]+\/video\/\d+)/);
     if(vidMatch) cleanUrl = vidMatch[1];
-    console.log("TikTok clean URL:", cleanUrl);
+    console.log("TikTok cleanUrl:", cleanUrl);
 
     function extractLinks(data){
       var links=[];
-      // Walk all possible shapes
-      var candidates=[data, data&&data.data, data&&data.result, data&&data.video];
+      var candidates=[data, data&&data.data, data&&data.result, data&&data.video, data&&data.aweme_detail];
       candidates.forEach(function(src){
-        if(!src) return;
-        if(src.play&&src.play.startsWith("http"))
-          links.push({label:"Baixar Vídeo (sem marca d'água)", url:src.play,   quality:"HD"});
-        if(src.wmplay&&src.wmplay.startsWith("http"))
-          links.push({label:"Baixar Vídeo (com marca d'água)", url:src.wmplay, quality:"HD"});
-        if(src.music&&src.music.startsWith("http"))
-          links.push({label:"Baixar Áudio MP3",                url:src.music,  quality:"MP3"});
-        if(src.download_url&&src.download_url.startsWith("http"))
-          links.push({label:"Baixar Vídeo HD",                 url:src.download_url, quality:"HD"});
-        if(src.url&&src.url.startsWith("http")&&!links.length)
-          links.push({label:"Baixar Vídeo",                    url:src.url,    quality:"HD"});
+        if(!src||typeof src!=="object") return;
+        if(src.play&&typeof src.play==="string"&&src.play.startsWith("http"))
+          links.push({label:"Baixar Vídeo (sem marca d\'água)",url:src.play,quality:"HD"});
+        if(src.wmplay&&typeof src.wmplay==="string"&&src.wmplay.startsWith("http"))
+          links.push({label:"Baixar Vídeo (com marca d\'água)",url:src.wmplay,quality:"HD"});
+        if(src.music&&typeof src.music==="string"&&src.music.startsWith("http"))
+          links.push({label:"Baixar Áudio MP3",url:src.music,quality:"MP3"});
+        if(src.download_url&&typeof src.download_url==="string"&&src.download_url.startsWith("http")&&!links.length)
+          links.push({label:"Baixar Vídeo HD",url:src.download_url,quality:"HD"});
+        if(src.url&&typeof src.url==="string"&&src.url.startsWith("http")&&!links.length)
+          links.push({label:"Baixar Vídeo",url:src.url,quality:"HD"});
       });
-      // dedupe by URL
       var seen={};
-      return links.filter(function(l){ if(seen[l.url]) return false; seen[l.url]=true; return true; });
+      return links.filter(function(l){if(seen[l.url])return false;seen[l.url]=true;return true;});
     }
 
-    function tryEndpoint(endpoint, nextFn){
-      fetch("https://"+TIKTOK_HOST+endpoint+encodeURIComponent(cleanUrl),{method:"GET",headers:hdr(TIKTOK_HOST)})
+    function getTitle(data){
+      var src=data&&(data.data||data.result||data.aweme_detail||data);
+      if(!src) return "Vídeo TikTok";
+      return src.title||src.desc||(src.author&&src.author.nickname)||"Vídeo TikTok";
+    }
+
+    // API 1: tiktok-scraper7 — 3 endpoints
+    function tryScraperEndpoint(ep, next){
+      fetch("https://"+TIKTOK_HOST+ep+encodeURIComponent(cleanUrl),{method:"GET",headers:hdr(TIKTOK_HOST)})
         .then(function(r){return r.json();})
-        .then(function(data){
-          console.log("TikTok ["+endpoint+"]:", JSON.stringify(data).slice(0,700));
-          var links=extractLinks(data);
-          if(links.length){
-            var src=data&&(data.data||data.result||data);
-            var title=(src&&(src.title||src.desc||src.author&&src.author.nickname))||"Vídeo TikTok";
-            finish(links, title+" · TikTok");
-          } else if(nextFn){
-            nextFn();
-          } else {
-            setErr("Não foi possível obter o vídeo. Tente copiar apenas o link base do TikTok (sem ?is_from_webapp...).");
-          }
+        .then(function(d){
+          console.log("TikTok scraper7 ["+ep+"]:",JSON.stringify(d).slice(0,600));
+          var lks=extractLinks(d);
+          if(lks.length) finish(lks,getTitle(d)+" · TikTok");
+          else if(next) next();
+          else tryAPI2();
         })
-        .catch(function(err){
-          console.error("TikTok fetch error:", err);
-          if(nextFn) nextFn(); else setErr("Erro de rede ao acessar TikTok.");
-        });
+        .catch(function(){if(next)next();else tryAPI2();});
     }
 
-    // Try 3 endpoints in sequence
-    tryEndpoint("/video/info?url=", function(){
-      tryEndpoint("/video/no_watermark?url=", function(){
-        tryEndpoint("/video/data?url=", null);
+    // API 2: tiktok-download-without-watermark (backup)
+    function tryAPI2(){
+      fetch("https://"+TIKTOK2_HOST+"/analysis?url="+encodeURIComponent(cleanUrl)+"&hd=1",{
+        method:"GET",
+        headers:hdr(TIKTOK2_HOST)
+      })
+      .then(function(r){return r.json();})
+      .then(function(d){
+        console.log("TikTok API2:",JSON.stringify(d).slice(0,600));
+        var lks=extractLinks(d);
+        if(lks.length) finish(lks,getTitle(d)+" · TikTok");
+        else setErr("Não foi possível obter o vídeo. Verifique se o link é público e tente novamente.");
+      })
+      .catch(function(){setErr("Erro ao acessar API de backup do TikTok.");});
+    }
+
+    tryScraperEndpoint("/video/info?url=",function(){
+      tryScraperEndpoint("/video/no_watermark?url=",function(){
+        tryScraperEndpoint("/video/data?url=",null);
       });
     });
   }
