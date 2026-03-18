@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MediaTool Pro v2 — Para Criadores de Conteúdo</title>
+  <title>MediaTool Pro v4 — Para Criadores de Conteúdo</title>
   <meta name="description" content="Baixe vídeos e áudios do YouTube, Instagram, TikTok e mais." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
@@ -300,210 +300,78 @@ function App(){
     setSub(titleStr||"");
   }
 
-  /* ── YouTube MP3 ── */
+  /* ── YouTube MP3 via Claude AI ── */
   function doMP3(){
     var vid=getYTId(url);
     if(!vid){ setErr("ID do vídeo não encontrado."); return; }
-    setLoad("Convertendo para MP3... ⏳");
-    function attempt(cb){
-      rapidFetch(MP3_HOST, "/dl?id="+encodeURIComponent(vid))
-        .then(function(r){return r.json();}).then(cb)
-        .catch(function(){ setErr("Erro de rede. Verifique sua conexão e tente novamente."); });
-    }
-    attempt(function(data){
-      if(data&&data.status==="ok"&&data.link){
-        finish([{label:"Baixar MP3",url:data.link,quality:"320kbps",filename:(data.title||"audio")+"-320kbps"}],(data.title||"Áudio")+" · MP3 · YouTube");
-      } else if(data&&data.status==="processing"){
-        setMsg("Processando, aguarde... ⏳");
-        setTimeout(function(){
-          attempt(function(d2){
-            if(d2&&d2.status==="ok"&&d2.link)
-              finish([{label:"Baixar MP3",url:d2.link,quality:"320kbps",filename:(d2.title||"audio")+"-320kbps"}],(d2.title||"Áudio")+" · MP3");
-            else setErr("Ainda processando. Tente novamente em alguns segundos.");
-          });
-        },4500);
-      } else {
-        // Fallback: try Cobalt for MP3
-        setMsg("Tentando rota alternativa para MP3... ⏳");
-        fetch("https://api.cobalt.tools/", {
-          method:"POST",
-          headers:{"Content-Type":"application/json","Accept":"application/json"},
-          body:JSON.stringify({url:url, downloadMode:"audio", filenameStyle:"basic"})
-        }).then(function(r){return r.json();})
-          .then(function(cd){
-            if((cd.status==="stream"||cd.status==="redirect")&&cd.url){
-              finish([{label:"Baixar MP3",url:cd.url,quality:"MP3"}],"Áudio · MP3 · YouTube");
-            } else {
-              setErr("Erro: "+(data&&(data.msg||data.message)||"Tente usar a opção MP4 ou tente novamente mais tarde."));
-            }
-          })
-          .catch(function(){ setErr("Erro: "+(data&&(data.msg||data.message)||"Resposta inesperada. Tente novamente.")); });
-      }
+    setLoad("🤖 Claude está buscando o MP3...");
+    callClaudeForDownload("mp3", vid, url)
+      .then(function(result){
+        if(result.links&&result.links.length){
+          finish(result.links, (result.title||"Áudio")+" · MP3 · YouTube");
+        } else {
+          showFallback("mp3", vid);
+        }
+      })
+      .catch(function(e){ console.error(e); showFallback("mp3", vid); });
+  }
+
+  /* ══ callClaudeForDownload — usa Claude API com web_search para achar links ══ */
+  function callClaudeForDownload(type, vid, pageUrl){
+    var ytUrl = "https://www.youtube.com/watch?v="+vid;
+    var qualStr = type==="mp4" ? qual : "mp3";
+    var prompt = type==="mp3"
+      ? "Preciso baixar o áudio MP3 do vídeo do YouTube: "+ytUrl+"\n\nUse web search para encontrar o link de download direto MP3 deste vídeo via serviços como yt1s, y2mate, loader.to, mp3ify ou similares. Retorne APENAS JSON no formato:\n{\"title\":\"título do vídeo\",\"links\":[{\"label\":\"Baixar MP3\",\"url\":\"URL_DIRETA_DO_ARQUIVO\",\"quality\":\"320kbps\"}]}\n\nSe não encontrar link direto de arquivo, retorne {\"links\":[]}"
+      : "Preciso baixar o vídeo MP4 "+qualStr+" do YouTube: "+ytUrl+"\n\nUse web search para encontrar o link de download direto MP4 "+qualStr+" deste vídeo via serviços como yt1s, y2mate, loader.to, savefrom ou similares. Retorne APENAS JSON no formato:\n{\"title\":\"título do vídeo\",\"links\":[{\"label\":\"Baixar "+qualStr+"\",\"url\":\"URL_DIRETA_DO_ARQUIVO\",\"quality\":\""+qualStr+"\"}]}\n\nSe não encontrar link direto de arquivo, retorne {\"links\":[]}";
+
+    return fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        model:"claude-sonnet-4-20250514",
+        max_tokens:1000,
+        tools:[{type:"web_search_20250305",name:"web_search"}],
+        messages:[{role:"user",content:prompt}]
+      })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      var text = (data.content||[]).filter(function(b){return b.type==="text";}).map(function(b){return b.text;}).join("");
+      var clean = text.replace(/```json|```/g,"").trim();
+      // find JSON in response
+      var m = clean.match(/\{[\s\S]*\}/);
+      if(!m) return {links:[]};
+      try{ return JSON.parse(m[0]); } catch(e){ return {links:[]}; }
     });
   }
 
-  /* ══ YouTube MP4 — pipeline de 4 estratégias ══
-     1. loader.to  (API pública ajax, sem CORS issues)
-     2. Invidious  (instâncias em série, não aleatório)
-     3. RapidAPI   (via allorigins proxy)
-     4. Fallback UI para download manual via y2mate / savefrom
-  ════════════════════════════════════════════════ */
+  /* ── Fallback UI com links externos ── */
+  function showFallback(type, vid){
+    var ytUrl = "https://www.youtube.com/watch?v="+vid;
+    setPhase("done"); setMsg(null);
+    setItems([
+      {label:"Abrir no SaveFrom.net", url:"https://en.savefrom.net/#url="+encodeURIComponent(ytUrl), quality:"↗"},
+      {label:"Abrir no Y2Mate",       url:"https://www.y2mate.com/youtube/"+vid,                     quality:"↗"},
+      {label:"Abrir no cobalt.tools", url:"https://cobalt.tools/?u="+encodeURIComponent(ytUrl),      quality:"↗"},
+    ]);
+    setSub("Baixe via um desses serviços externos ↗");
+  }
+
+  /* ══ YouTube MP4 via Claude AI + fallbacks ══ */
   function doMP4(){
     var vid=getYTId(url);
     if(!vid){ setErr("ID do vídeo não encontrado."); return; }
-    setLoad("Iniciando busca... 🎬");
+    setLoad("🤖 Claude está buscando o vídeo "+qual+"...");
 
-    /* ── Strategy 1: loader.to ── */
-    function tryLoaderTo(){
-      // Step 1: convert
-      return fetch("https://loader.to/ajax/download.php?format="+qual.replace("p","")+"&url="+encodeURIComponent("https://www.youtube.com/watch?v="+vid), {
-        method:"GET", headers:{Accept:"application/json"}
-      })
-      .then(function(r){ return r.json(); })
-      .then(function(d){
-        if(!d.id) throw new Error("loader.to: no id");
-        var jobId = d.id;
-        // Step 2: poll progress
-        function poll(tries){
-          return fetch("https://loader.to/ajax/progress.php?id="+jobId)
-            .then(function(r){ return r.json(); })
-            .then(function(p){
-              console.log("loader.to progress:", JSON.stringify(p).slice(0,200));
-              if(p.download_url) return {_direct:true, url:p.download_url, quality:qual, title:p.title||"Vídeo"};
-              if(p.success&&p.text){
-                // parse link from text
-                var m = p.text.match(/href="([^"]+)"/);
-                if(m) return {_direct:true, url:m[1], quality:qual, title:p.title||"Vídeo"};
-              }
-              if(tries<=0) throw new Error("loader.to timeout");
-              setMsg("Processando vídeo... "+(p.progress||"")+"% ⏳");
-              return new Promise(function(res){ setTimeout(function(){ res(poll(tries-1)); }, 2500); });
-            });
+    callClaudeForDownload("mp4", vid, url)
+      .then(function(result){
+        if(result.links&&result.links.length){
+          finish(result.links, (result.title||"Vídeo")+" · MP4 "+qual+" · YouTube");
+        } else {
+          showFallback("mp4", vid);
         }
-        return poll(14);
-      });
-    }
-
-    /* ── Strategy 2: Invidious (tenta cada instância em série) ── */
-    var INV = [
-      "https://invidious.fdn.fr",
-      "https://inv.nadeko.net",
-      "https://invidious.nerdvpn.de",
-      "https://iv.datura.network",
-      "https://invidious.privacydev.net",
-    ];
-    function tryInvidiousSeries(idx){
-      if(idx>=INV.length) return Promise.reject(new Error("Todas instâncias Invidious falharam"));
-      var inst = INV[idx];
-      return fetch(inst+"/api/v1/videos/"+vid+"?fields=title,adaptiveFormats,formatStreams", {signal:AbortSignal.timeout(8000)})
-        .then(function(r){
-          if(!r.ok) throw new Error(inst+" HTTP "+r.status);
-          return r.json();
-        })
-        .then(function(data){
-          if(!data||(!data.formatStreams&&!data.adaptiveFormats)) throw new Error("empty");
-          var formats=(data.formatStreams||[]).map(function(f){
-            return {url:f.url,mimeType:f.type||"video/mp4",qualityLabel:f.qualityLabel||f.quality,itag:f.itag};
-          });
-          var adaptive=(data.adaptiveFormats||[]).map(function(f){
-            return {url:f.url,mimeType:f.type||"",qualityLabel:f.qualityLabel||f.quality,audioQuality:f.audioQuality,itag:f.itag};
-          });
-          return {title:data.title||"Vídeo",formats:formats,adaptiveFormats:adaptive};
-        })
-        .catch(function(e){
-          console.warn("Invidious "+inst+" falhou:", e.message);
-          return tryInvidiousSeries(idx+1);
-        });
-    }
-
-    /* ── Strategy 3: RapidAPI via allorigins ── */
-    function tryRapidAPI(){
-      return rapidFetch(YTAPI_HOST, "/dl?id="+encodeURIComponent(vid))
-        .then(function(r){return r.json();})
-        .then(function(data){
-          if(!data||(Object.keys(data).length<2)) throw new Error("empty rapid response");
-          return data;
-        });
-    }
-
-    /* ── processYTData: normaliza formatos e despacha ── */
-    function processYTData(data){
-      var title = data.title||"Vídeo";
-
-      if(data._direct){
-        finish([{label:"⬇ Baixar "+data.quality+" (vídeo+áudio)", url:data.url, quality:data.quality}],
-               title+" · MP4 · YouTube");
-        return;
-      }
-
-      var muxed=[], videoOnly=[], audioOnly=[];
-      (data.formats||[]).forEach(function(f){
-        if(f.url&&(f.mimeType||"").indexOf("video/mp4")>-1&&f.qualityLabel)
-          muxed.push({url:f.url,quality:f.qualityLabel});
-      });
-      (data.adaptiveFormats||[]).forEach(function(f){
-        var mime=f.mimeType||"";
-        if(f.url&&mime.indexOf("video/mp4")>-1&&f.qualityLabel)
-          videoOnly.push({url:f.url,quality:f.qualityLabel});
-        if(f.url&&(mime.indexOf("audio/mp4")>-1||mime.indexOf("audio/webm")>-1))
-          audioOnly.push({url:f.url,quality:f.audioQuality||"medium"});
-      });
-
-      var exactMuxed=muxed.filter(function(f){return f.quality.indexOf(qual)>-1;});
-      if(exactMuxed.length){
-        finish(dedupeLinks(exactMuxed.map(function(f){
-          return {label:"Baixar "+f.quality+" (vídeo+áudio)",url:f.url,quality:f.quality};
-        })), title+" · MP4 · YouTube");
-        return;
-      }
-      var targetVid=videoOnly.filter(function(f){return f.quality.indexOf(qual)>-1;});
-      if(!targetVid.length) targetVid=videoOnly.slice(0,2);
-      var bestAudio=audioOnly[0]||null;
-      if(targetVid.length&&bestAudio){
-        doFFmpegMerge(targetVid[0].url,bestAudio.url,qual,title); return;
-      }
-      if(muxed.length){
-        finish(dedupeLinks(muxed.map(function(f){
-          return {label:"Baixar "+f.quality,url:f.url,quality:f.quality};
-        })).slice(0,3), title+" · MP4");
-        return;
-      }
-      throw new Error("sem streams");
-    }
-
-    /* ── Strategy 4: fallback UI ── */
-    function showFallbackUI(){
-      var ytUrl = "https://www.youtube.com/watch?v="+vid;
-      setPhase("done"); setMsg(null);
-      setItems([
-        {label:"Abrir no SaveFrom.net", url:"https://en.savefrom.net/#url="+encodeURIComponent(ytUrl), quality:"↗"},
-        {label:"Abrir no Y2Mate",       url:"https://www.y2mate.com/youtube/"+vid,                    quality:"↗"},
-        {label:"Abrir no cobalt.tools", url:"https://cobalt.tools/?u="+encodeURIComponent(ytUrl),     quality:"↗"},
-      ]);
-      setSub("Baixe via um desses serviços externos ↗");
-      setMtype("warn");
-    }
-
-    /* ── Sequência principal ── */
-    setMsg("Tentando loader.to... (1/3) ⏳");
-    tryLoaderTo()
-      .then(processYTData)
-      .catch(function(e1){
-        console.warn("loader.to falhou:", e1.message);
-        setMsg("Tentando Invidious... (2/3) ⏳");
-        return tryInvidiousSeries(0)
-          .then(processYTData)
-          .catch(function(e2){
-            console.warn("Invidious falhou:", e2.message);
-            setMsg("Tentando RapidAPI... (3/3) ⏳");
-            return tryRapidAPI()
-              .then(processYTData)
-              .catch(function(e3){
-                console.error("Todas falharam:", e1.message, e2.message, e3.message);
-                showFallbackUI();
-              });
-          });
-      });
+      })
+      .catch(function(e){ console.error(e); showFallback("mp4", vid); });
   }
 
   /* ── FFmpeg Merge (720p/1080p) ── */
