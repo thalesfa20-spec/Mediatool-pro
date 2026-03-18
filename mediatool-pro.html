@@ -346,34 +346,64 @@ function App(){
   /* ── TikTok ── */
   function doTikTok(){
     setLoad("Buscando vídeo do TikTok... ♪");
-    fetch("https://"+TIKTOK_HOST+"/video/info?url="+encodeURIComponent(url),{method:"GET",headers:hdr(TIKTOK_HOST)})
-      .then(function(r){return r.json();})
-      .then(function(data){
-        console.log("TikTok:",JSON.stringify(data).slice(0,600));
-        var links=[];
-        var src=data&&(data.data||data.result||data);
-        if(src){
-          if(src.play)   links.push({label:"Baixar Vídeo (sem marca d'água)",url:src.play,  quality:"HD"});
-          if(src.wmplay) links.push({label:"Baixar Vídeo (com marca d'água)",url:src.wmplay,quality:"HD"});
-          if(src.music)  links.push({label:"Baixar Áudio MP3",               url:src.music, quality:"MP3"});
-        }
-        if(links.length){
-          var title=src&&(src.title||src.desc)||"Vídeo TikTok";
-          finish(links,title+" · TikTok");
-        } else {
-          fetch("https://"+TIKTOK_HOST+"/video/no_watermark?url="+encodeURIComponent(url),{method:"GET",headers:hdr(TIKTOK_HOST)})
-            .then(function(r2){return r2.json();})
-            .then(function(d2){
-              console.log("TikTok no_wm:",JSON.stringify(d2).slice(0,400));
-              var lks2=[];
-              var s2=d2&&(d2.data||d2);
-              if(s2&&s2.play)   lks2.push({label:"Baixar Vídeo HD",url:s2.play,  quality:"HD"});
-              if(s2&&s2.url)    lks2.push({label:"Baixar Vídeo",   url:s2.url,   quality:"HD"});
-              if(lks2.length) finish(lks2,"TikTok · Vídeo");
-              else setErr("Não foi possível obter o vídeo. Verifique se o link é público.");
-            }).catch(function(){ setErr("Erro ao buscar vídeo TikTok."); });
-        }
-      }).catch(function(){ setErr("Erro de rede ao acessar TikTok."); });
+
+    // Clean URL: remove query params, keep only the base video URL
+    var cleanUrl = url.split("?")[0].split("&")[0];
+    // Ensure it ends cleanly after the video ID
+    var vidMatch = cleanUrl.match(/(https:\/\/www\.tiktok\.com\/@[^\/]+\/video\/\d+)/);
+    if(vidMatch) cleanUrl = vidMatch[1];
+    console.log("TikTok clean URL:", cleanUrl);
+
+    function extractLinks(data){
+      var links=[];
+      // Walk all possible shapes
+      var candidates=[data, data&&data.data, data&&data.result, data&&data.video];
+      candidates.forEach(function(src){
+        if(!src) return;
+        if(src.play&&src.play.startsWith("http"))
+          links.push({label:"Baixar Vídeo (sem marca d'água)", url:src.play,   quality:"HD"});
+        if(src.wmplay&&src.wmplay.startsWith("http"))
+          links.push({label:"Baixar Vídeo (com marca d'água)", url:src.wmplay, quality:"HD"});
+        if(src.music&&src.music.startsWith("http"))
+          links.push({label:"Baixar Áudio MP3",                url:src.music,  quality:"MP3"});
+        if(src.download_url&&src.download_url.startsWith("http"))
+          links.push({label:"Baixar Vídeo HD",                 url:src.download_url, quality:"HD"});
+        if(src.url&&src.url.startsWith("http")&&!links.length)
+          links.push({label:"Baixar Vídeo",                    url:src.url,    quality:"HD"});
+      });
+      // dedupe by URL
+      var seen={};
+      return links.filter(function(l){ if(seen[l.url]) return false; seen[l.url]=true; return true; });
+    }
+
+    function tryEndpoint(endpoint, nextFn){
+      fetch("https://"+TIKTOK_HOST+endpoint+encodeURIComponent(cleanUrl),{method:"GET",headers:hdr(TIKTOK_HOST)})
+        .then(function(r){return r.json();})
+        .then(function(data){
+          console.log("TikTok ["+endpoint+"]:", JSON.stringify(data).slice(0,700));
+          var links=extractLinks(data);
+          if(links.length){
+            var src=data&&(data.data||data.result||data);
+            var title=(src&&(src.title||src.desc||src.author&&src.author.nickname))||"Vídeo TikTok";
+            finish(links, title+" · TikTok");
+          } else if(nextFn){
+            nextFn();
+          } else {
+            setErr("Não foi possível obter o vídeo. Tente copiar apenas o link base do TikTok (sem ?is_from_webapp...).");
+          }
+        })
+        .catch(function(err){
+          console.error("TikTok fetch error:", err);
+          if(nextFn) nextFn(); else setErr("Erro de rede ao acessar TikTok.");
+        });
+    }
+
+    // Try 3 endpoints in sequence
+    tryEndpoint("/video/info?url=", function(){
+      tryEndpoint("/video/no_watermark?url=", function(){
+        tryEndpoint("/video/data?url=", null);
+      });
+    });
   }
 
   /* ── Thumbnail ── */
