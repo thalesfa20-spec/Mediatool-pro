@@ -9,7 +9,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; }
@@ -20,10 +19,10 @@
     input[type=range] { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 2px; background: #ffffff18; outline: none; cursor: pointer; }
     input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #A855F7; cursor: pointer; box-shadow: 0 0 8px #A855F788; }
     @keyframes floatUp {
-      0%   { transform: translateY(0) translateX(0); opacity: 0; }
+      0%   { transform: translateY(0); opacity: 0; }
       10%  { opacity: 1; }
       90%  { opacity: 0.4; }
-      100% { transform: translateY(-110vh) translateX(30px); opacity: 0; }
+      100% { transform: translateY(-110vh); opacity: 0; }
     }
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(14px); }
@@ -31,17 +30,14 @@
     }
     @keyframes pulse {
       0%, 100% { opacity: 0.6; }
-      50%       { opacity: 1; }
+      50% { opacity: 1; }
     }
     @keyframes shimmer {
       0%   { background-position: -200% center; }
       100% { background-position:  200% center; }
     }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    .fade-in  { animation: fadeIn 0.45s ease both; }
-    .pulse    { animation: pulse 1.6s ease infinite; }
+    .fade-in { animation: fadeIn 0.45s ease both; }
+    .pulse   { animation: pulse 1.6s ease infinite; }
     .shimmer-text {
       background: linear-gradient(90deg, #A855F7, #3B82F6, #10B981, #A855F7);
       background-size: 200% auto;
@@ -49,622 +45,566 @@
       -webkit-text-fill-color: transparent;
       animation: shimmer 3s linear infinite;
     }
-    .tool-card { transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease; }
+    .tool-card { transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease; }
     .tool-card:hover { transform: translateY(-3px); }
-    .nav-btn   { transition: all 0.2s; }
+    .nav-btn { transition: all 0.2s; }
     .nav-btn:hover { background: rgba(255,255,255,0.08) !important; color: #fff !important; }
-    .quality-btn { transition: all 0.18s; }
-    .quality-btn:hover { border-color: #A855F7 !important; color: #A855F7 !important; }
-    #root { min-height: 100vh; }
+    .q-btn { transition: all 0.18s; }
+    .q-btn:hover { border-color: #A855F7 !important; color: #A855F7 !important; }
   </style>
 </head>
 <body>
 <div id="root"></div>
+<script>
+(function() {
+"use strict";
 
-<script type="text/babel">
-const { useState, useEffect, useRef, useCallback } = React;
+var e = React.createElement;
+var useState = React.useState;
+var useEffect = React.useEffect;
+var useRef = React.useRef;
+var Fragment = React.Fragment;
 
-const PLATFORMS = [
-  { name: "YouTube",   icon: "▶", color: "#FF0000", pattern: /youtube\.com|youtu\.be/ },
-  { name: "Instagram", icon: "◈", color: "#E1306C", pattern: /instagram\.com/ },
-  { name: "TikTok",    icon: "♪", color: "#69C9D0", pattern: /tiktok\.com/ },
-  { name: "Facebook",  icon: "ƒ", color: "#1877F2", pattern: /facebook\.com|fb\.watch/ },
-  { name: "Twitter/X", icon: "✕", color: "#1DA1F2", pattern: /twitter\.com|x\.com/ },
-  { name: "Vimeo",     icon: "⬡", color: "#1AB7EA", pattern: /vimeo\.com/ },
+var PLATFORMS = [
+  { name:"YouTube",   icon:"\u25BA", color:"#FF0000", re:/youtube\.com|youtu\.be/ },
+  { name:"Instagram", icon:"\u25C8", color:"#E1306C", re:/instagram\.com/ },
+  { name:"TikTok",    icon:"\u266A", color:"#69C9D0", re:/tiktok\.com/ },
+  { name:"Facebook",  icon:"\u0192", color:"#1877F2", re:/facebook\.com|fb\.watch/ },
+  { name:"Twitter/X", icon:"\u2715", color:"#1DA1F2", re:/twitter\.com|x\.com/ },
+  { name:"Vimeo",     icon:"\u2B21", color:"#1AB7EA", re:/vimeo\.com/ },
 ];
 
-const TOOLS = [
-  { id:"mp3",   icon:"🎵", label:"Converter para MP3",  desc:"Extraia o áudio em alta qualidade",        badge:"Até 320kbps",    color:"#A855F7", free:true },
-  { id:"mp4",   icon:"🎬", label:"Converter para MP4",  desc:"Baixe o vídeo em diversas qualidades",     badge:"Até 4K",         color:"#3B82F6", free:true },
-  { id:"trim",  icon:"✂️", label:"Cortar Trecho",        desc:"Selecione o início e fim do clipe",        badge:"Precisão frame", color:"#10B981", free:false },
-  { id:"thumb", icon:"🖼️", label:"Extrair Thumbnail",   desc:"Captura de capa em alta resolução",        badge:"PNG / JPG",      color:"#F59E0B", free:true },
-  { id:"subs",  icon:"💬", label:"Baixar Legendas",      desc:"Extraia SRT, VTT ou TXT quando disponível",badge:"Multilíngue",   color:"#EF4444", free:false },
+var TOOLS = [
+  { id:"mp3",   icon:"\uD83C\uDFB5", label:"Converter para MP3",   desc:"Extraia o \u00e1udio em alta qualidade",           badge:"At\u00e9 320kbps",    color:"#A855F7", free:true  },
+  { id:"mp4",   icon:"\uD83C\uDFAC", label:"Converter para MP4",   desc:"Baixe o v\u00eddeo em diversas qualidades",        badge:"At\u00e9 4K",         color:"#3B82F6", free:true  },
+  { id:"trim",  icon:"\u2702\uFE0F", label:"Cortar Trecho",         desc:"Selecione o in\u00edcio e fim do clipe",           badge:"Precis\u00e3o frame", color:"#10B981", free:false },
+  { id:"thumb", icon:"\uD83D\uDDBC\uFE0F", label:"Extrair Thumbnail", desc:"Captura de capa em alta resolu\u00e7\u00e3o", badge:"PNG / JPG",      color:"#F59E0B", free:true  },
+  { id:"subs",  icon:"\uD83D\uDCAC", label:"Baixar Legendas",       desc:"Extraia SRT, VTT ou TXT quando dispon\u00edvel",  badge:"Multil\u00edngue",   color:"#EF4444", free:false },
 ];
 
-const QUALITY = {
-  mp3: ["128 kbps","192 kbps","256 kbps","320 kbps"],
-  mp4: ["480p","720p","1080p","2048p (4K)"],
+var QUALITY = {
+  mp3:["128 kbps","192 kbps","256 kbps","320 kbps"],
+  mp4:["480p","720p","1080p","2048p (4K)"],
 };
 
-const HISTORY = [
-  { title:"Lo-Fi Beats Para Estudar",   platform:"YouTube",   type:"MP3",        date:"Hoje, 14:22", size:"8.2 MB" },
-  { title:"Tutorial React Avançado",    platform:"YouTube",   type:"MP4 1080p",  date:"Hoje, 11:05", size:"312 MB" },
-  { title:"Reel de Fotografia",         platform:"Instagram", type:"Thumbnail",  date:"Ontem",       size:"1.4 MB" },
-  { title:"Podcast Episódio 47",        platform:"Vimeo",     type:"MP3",        date:"Ontem",       size:"56 MB" },
+var HISTORY = [
+  { title:"Lo-Fi Beats Para Estudar",  platform:"YouTube",   type:"MP3",       date:"Hoje, 14:22", size:"8.2 MB"  },
+  { title:"Tutorial React Avan\u00e7ado",   platform:"YouTube",   type:"MP4 1080p", date:"Hoje, 11:05", size:"312 MB"  },
+  { title:"Reel de Fotografia",        platform:"Instagram", type:"Thumbnail", date:"Ontem",       size:"1.4 MB"  },
+  { title:"Podcast Epis\u00f3dio 47",       platform:"Vimeo",     type:"MP3",       date:"Ontem",       size:"56 MB"   },
 ];
 
-const PLANS = [
-  {
-    name:"Gratuito", price:"R$ 0",   per:"/mês", color:"#6B7280",
-    features:["MP3 até 192kbps","MP4 até 720p","Thumbnail básica","5 downloads/dia"],
-    locked:["Corte de vídeo","Legendas","Histórico"],
-    cta:"Começar grátis",
-  },
-  {
-    name:"Pro",      price:"R$ 19",  per:"/mês", color:"#A855F7", highlight:true,
-    features:["MP3 até 320kbps","MP4 até 4K","Corte de vídeo","Legendas multilíngue","Histórico ilimitado","Downloads ilimitados"],
-    locked:[],
-    cta:"Assinar Pro →",
-  },
-  {
-    name:"Criador",  price:"R$ 49",  per:"/mês", color:"#F59E0B",
-    features:["Tudo do Pro","API de acesso","Processamento em lote","Suporte prioritário","Sem marca d'água"],
-    locked:[],
-    cta:"Assinar Criador →",
-  },
+var PLANS = [
+  { name:"Gratuito", price:"R$ 0",  per:"/m\u00eas", color:"#6B7280",
+    ok:["MP3 at\u00e9 192kbps","MP4 at\u00e9 720p","Thumbnail b\u00e1sica","5 downloads/dia"],
+    no:["Corte de v\u00eddeo","Legendas","Hist\u00f3rico"], cta:"Come\u00e7ar gr\u00e1tis", hi:false },
+  { name:"Pro", price:"R$ 19", per:"/m\u00eas", color:"#A855F7",
+    ok:["MP3 at\u00e9 320kbps","MP4 at\u00e9 4K","Corte de v\u00eddeo","Legendas multil\u00edngue","Hist\u00f3rico ilimitado","Downloads ilimitados"],
+    no:[], cta:"Assinar Pro \u2192", hi:true },
+  { name:"Criador", price:"R$ 49", per:"/m\u00eas", color:"#F59E0B",
+    ok:["Tudo do Pro","API de acesso","Processamento em lote","Suporte priorit\u00e1rio","Sem marca d\u2019\u00e1gua"],
+    no:[], cta:"Assinar Criador \u2192", hi:false },
 ];
+
+var PARTICLES = (function() {
+  var arr = [];
+  for (var i = 0; i < 20; i++) {
+    arr.push({ id:i, x:Math.random()*98+1, y:Math.random()*90+5,
+      size:Math.random()*3+1, speed:Math.random()*22+14,
+      op:Math.random()*0.22+0.04, delay:-(Math.random()*30) });
+  }
+  return arr;
+})();
 
 function detectPlatform(url) {
-  for (const p of PLATFORMS) if (p.pattern.test(url)) return p;
+  for (var i = 0; i < PLATFORMS.length; i++) {
+    if (PLATFORMS[i].re.test(url)) return PLATFORMS[i];
+  }
   return null;
 }
 
-function formatTime(s) {
-  return `${Math.floor(s/60)}:${(s%60).toString().padStart(2,"0")}`;
+function fmt(s) {
+  return Math.floor(s/60) + ":" + (s%60).toString().padStart(2,"0");
 }
 
-/* ─── Particles ──────────────────────────────────── */
-function Particles() {
-  const pts = useRef(Array.from({length:20},(_,i)=>({
-    id:i, x:Math.random()*100, y:Math.random()*100+5,
-    size:Math.random()*3+1, speed:Math.random()*22+14,
-    opacity:Math.random()*0.28+0.04, delay:Math.random()*-30,
-  }))).current;
-  return (
-    <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:0,overflow:"hidden"}}>
-      {pts.map(p=>(
-        <div key={p.id} style={{
-          position:"absolute",
-          left:`${p.x}%`, top:`${p.y}%`,
-          width:p.size, height:p.size,
-          borderRadius:"50%",
-          background:"#A855F7",
-          opacity:p.opacity,
-          animation:`floatUp ${p.speed}s linear infinite`,
-          animationDelay:`${p.delay}s`,
-        }}/>
-      ))}
-    </div>
-  );
-}
-
-/* ─── Login Modal ─────────────────────────────────── */
-function LoginModal({ onClose, onLogin }) {
-  const [email,setEmail]=useState("");
-  const [pass,setPass]=useState("");
-  return (
-    <div onClick={onClose} style={{
-      position:"fixed",inset:0,background:"rgba(0,0,0,0.72)",
-      backdropFilter:"blur(10px)",zIndex:200,
-      display:"flex",alignItems:"center",justifyContent:"center",padding:20,
-    }}>
-      <div onClick={e=>e.stopPropagation()} className="fade-in" style={{
-        background:"rgba(10,8,30,0.97)",
-        border:"1px solid rgba(168,85,247,0.35)",
-        borderRadius:20, padding:32, width:"100%", maxWidth:380,
-        boxShadow:"0 24px 64px rgba(0,0,0,0.6)",
-      }}>
-        <h3 style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:22,color:"#fff",marginBottom:6}}>Acesso Premium</h3>
-        <p style={{fontSize:13,color:"#ffffff55",marginBottom:24}}>Esta função requer uma conta gratuita</p>
-        <input
-          type="email" placeholder="seu@email.com" value={email}
-          onChange={e=>setEmail(e.target.value)}
-          style={{display:"block",width:"100%",background:"rgba(255,255,255,0.05)",
-            border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,color:"#fff",
-            padding:"12px 14px",fontSize:14,fontFamily:"'DM Sans',sans-serif",
-            outline:"none",marginBottom:12}}
-        />
-        <input
-          type="password" placeholder="Senha" value={pass}
-          onChange={e=>setPass(e.target.value)}
-          style={{display:"block",width:"100%",background:"rgba(255,255,255,0.05)",
-            border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,color:"#fff",
-            padding:"12px 14px",fontSize:14,fontFamily:"'DM Sans',sans-serif",
-            outline:"none",marginBottom:12}}
-        />
-        <button
-          onClick={()=>{ if(email&&pass) onLogin(); }}
-          style={{width:"100%",background:"linear-gradient(135deg,#A855F7,#3B82F6)",
-            border:"none",borderRadius:10,color:"#fff",padding:13,fontSize:15,
-            fontFamily:"'Syne',sans-serif",fontWeight:700,cursor:"pointer",marginTop:4}}
-        >Entrar →</button>
-        <p style={{textAlign:"center",fontSize:12,color:"#ffffff44",marginTop:16}}>
-          Não tem conta? <span style={{color:"#A855F7",cursor:"pointer"}}>Criar grátis</span>
-        </p>
-      </div>
-    </div>
-  );
-}
-
-/* ─── Progress Bar ────────────────────────────────── */
-function ProgressCard({ progress, label, color }) {
-  const steps = ["Análise","Processamento","Otimização","Download"];
-  return (
-    <div className="fade-in" style={{
-      background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",
-      borderRadius:16,padding:24,marginBottom:20,
-    }}>
-      <div style={{display:"flex",justifyContent:"space-between",marginBottom:12,fontSize:13,color:"#ffffff88"}}>
-        <span className="pulse">{label}</span>
-        <span style={{fontFamily:"'Syne',sans-serif",fontWeight:700,color:"#fff"}}>{Math.round(progress)}%</span>
-      </div>
-      <div style={{height:6,background:"#ffffff10",borderRadius:3,overflow:"hidden",position:"relative",marginBottom:16}}>
-        <div style={{
-          height:"100%",borderRadius:3,
-          background:`linear-gradient(90deg,${color},${color}99)`,
-          width:`${progress}%`,transition:"width 0.1s ease",
-        }}/>
-      </div>
-      <div style={{display:"flex",justifyContent:"space-between",fontSize:11,flexWrap:"wrap",gap:6}}>
-        {steps.map((s,i)=>(
-          <span key={s} style={{color:progress>i*25?color:"#ffffff33",transition:"color 0.4s"}}>
-            {progress>i*25?"✓":"○"} {s}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ─── Main App ────────────────────────────────────── */
-function App() {
-  const [url,setUrl]               = useState("");
-  const [platform,setPlatform]     = useState(null);
-  const [tool,setTool]             = useState(null);
-  const [quality,setQuality]       = useState("");
-  const [start,setStart]           = useState(0);
-  const [end,setEnd]               = useState(60);
-  const [phase,setPhase]           = useState("idle");
-  const [progress,setProgress]     = useState(0);
-  const [progLabel,setProgLabel]   = useState("");
-  const [tab,setTab]               = useState("tool");
-  const [loggedIn,setLoggedIn]     = useState(false);
-  const [showLogin,setShowLogin]   = useState(false);
-  const timerRef                   = useRef(null);
-
-  useEffect(()=>{
-    const p = detectPlatform(url);
-    setPlatform(p);
-    setPhase(url&&p?"preview":"idle");
-  },[url]);
-
-  const startProcessing = () => {
-    if(!tool||!url) return;
-    const t = TOOLS.find(x=>x.id===tool);
-    if(!t.free&&!loggedIn){ setShowLogin(true); return; }
-    setPhase("processing"); setProgress(0);
-    const steps=["Conectando ao servidor...","Analisando mídia...","Processando...","Preparando download..."];
-    let si=0; setProgLabel(steps[0]);
-    timerRef.current=setInterval(()=>{
-      setProgress(p=>{
-        const next=Math.min(p+Math.random()*4+1,100);
-        const ni=Math.floor((next/100)*(steps.length-1));
-        if(ni!==si){ si=ni; setProgLabel(steps[ni]); }
-        if(next>=100){ clearInterval(timerRef.current); setTimeout(()=>setPhase("done"),450); }
-        return next;
-      });
-    },80);
-  };
-
-  const reset = () => {
-    clearInterval(timerRef.current);
-    setUrl(""); setTool(null); setQuality(""); setPhase("idle"); setProgress(0);
-  };
-
-  const activeTool = TOOLS.find(x=>x.id===tool);
-  const thumbSrc   = platform ? `https://picsum.photos/seed/${encodeURIComponent(url)}/640/360` : null;
-
-  /* ── Glass card helper ── */
-  const glass = (extra={}) => ({
+function glass(extra) {
+  var base = {
     background:"rgba(255,255,255,0.04)",
     backdropFilter:"blur(20px)",
     border:"1px solid rgba(255,255,255,0.08)",
-    borderRadius:16, ...extra,
-  });
+    borderRadius:16,
+  };
+  return extra ? Object.assign({}, base, extra) : base;
+}
 
-  return (
-    <div style={{minHeight:"100vh",background:"#060612",position:"relative",overflowX:"hidden"}}>
-      {/* BG layers */}
-      <div style={{position:"fixed",inset:0,zIndex:0,pointerEvents:"none",
-        background:"radial-gradient(ellipse 80% 60% at 20% 10%,#1a0a3a 0%,transparent 60%),radial-gradient(ellipse 60% 50% at 80% 80%,#0a1a2e 0%,transparent 60%)"}}/>
-      <div style={{position:"fixed",inset:0,zIndex:0,pointerEvents:"none",
-        backgroundImage:"linear-gradient(rgba(168,85,247,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(168,85,247,0.04) 1px,transparent 1px)",
-        backgroundSize:"48px 48px"}}/>
-      <Particles/>
-
-      {showLogin && <LoginModal onClose={()=>setShowLogin(false)} onLogin={()=>{setLoggedIn(true);setShowLogin(false);}}/>}
-
-      {/* ── Wrapper ── */}
-      <div style={{position:"relative",zIndex:1,maxWidth:940,margin:"0 auto",padding:"0 20px 56px"}}>
-
-        {/* HEADER */}
-        <header style={{display:"flex",alignItems:"center",justifyContent:"space-between",
-          padding:"28px 0 18px",flexWrap:"wrap",gap:14}}>
-          <div style={{display:"flex",alignItems:"center",gap:12}}>
-            <span style={{fontSize:28,color:"#A855F7",lineHeight:1}}>⬡</span>
-            <div>
-              <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:20,color:"#fff",letterSpacing:"-0.3px"}}>
-                MediaTool <span style={{background:"linear-gradient(90deg,#A855F7,#3B82F6)",
-                  WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Pro</span>
-              </div>
-              <div style={{fontSize:11,color:"#ffffff44",letterSpacing:"0.5px",marginTop:2}}>Para criadores de conteúdo</div>
-            </div>
-          </div>
-          <nav style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-            {[["tool","🔧 Ferramenta"],["history","📂 Histórico"],["premium","⭐ Premium"]].map(([t,label])=>(
-              <button key={t} className="nav-btn" onClick={()=>setTab(t)} style={{
-                background:tab===t?"rgba(255,255,255,0.08)":"transparent",
-                border:"1px solid "+(tab===t?"rgba(168,85,247,0.4)":"rgba(255,255,255,0.1)"),
-                borderRadius:8,color:tab===t?"#fff":"#ffffff66",
-                padding:"7px 14px",fontSize:12,cursor:"pointer",
-                fontFamily:"'DM Sans',sans-serif",
-              }}>{label}</button>
-            ))}
-            {loggedIn
-              ? <div style={{width:32,height:32,borderRadius:"50%",
-                  background:"linear-gradient(135deg,#A855F7,#3B82F6)",
-                  display:"flex",alignItems:"center",justifyContent:"center",
-                  fontWeight:700,fontSize:13,cursor:"pointer"}}>V</div>
-              : <button onClick={()=>setShowLogin(true)} style={{
-                  background:"linear-gradient(135deg,#A855F7,#3B82F6)",
-                  border:"none",borderRadius:8,color:"#fff",
-                  padding:"7px 16px",fontSize:12,cursor:"pointer",
-                  fontFamily:"'DM Sans',sans-serif",fontWeight:500}}>Entrar</button>
-            }
-          </nav>
-        </header>
-
-        {/* ════ TAB: FERRAMENTA ════ */}
-        {tab==="tool" && (<>
-
-          {/* Hero */}
-          <div className="fade-in" style={{textAlign:"center",padding:"32px 0 28px"}}>
-            <div style={{display:"inline-block",background:"rgba(168,85,247,0.1)",
-              border:"1px solid rgba(168,85,247,0.3)",borderRadius:20,
-              padding:"5px 14px",fontSize:12,color:"#A855F7",marginBottom:16,letterSpacing:"0.3px"}}>
-              🚀 Processamento em nuvem
-            </div>
-            <h1 style={{fontFamily:"'Syne',sans-serif",fontSize:"clamp(30px,6vw,52px)",
-              fontWeight:800,lineHeight:1.1,color:"#fff",marginBottom:12}}>
-              Processe qualquer<br/>
-              <span className="shimmer-text">vídeo online</span>
-            </h1>
-            <p style={{fontSize:14,color:"#ffffff55",letterSpacing:"0.5px"}}>
-              YouTube · Instagram · TikTok · Facebook · Vimeo · e mais
-            </p>
-          </div>
-
-          {/* URL Input */}
-          <div className="fade-in" style={{...glass(),padding:20,marginBottom:16}}>
-            <div style={{display:"flex",alignItems:"center",gap:12,
-              background:"rgba(0,0,0,0.3)",border:"1px solid rgba(255,255,255,0.1)",
-              borderRadius:12,padding:"4px 8px 4px 16px"}}>
-              <span style={{fontSize:18,flexShrink:0}}>
-                {platform
-                  ? <span style={{color:platform.color,fontWeight:700}}>{platform.icon}</span>
-                  : "🔗"}
-              </span>
-              <input
-                type="url"
-                placeholder="Cole o link do vídeo aqui... (YouTube, TikTok, Instagram...)"
-                value={url}
-                onChange={e=>setUrl(e.target.value)}
-                style={{flex:1,background:"transparent",border:"none",outline:"none",
-                  color:"#fff",fontSize:15,padding:"12px 0",
-                  fontFamily:"'DM Sans',sans-serif"}}
-              />
-              {url && <button onClick={reset} style={{
-                background:"rgba(255,255,255,0.08)",border:"none",borderRadius:8,
-                color:"#ffffff66",width:28,height:28,cursor:"pointer",fontSize:12,flexShrink:0
-              }}>✕</button>}
-            </div>
-            {platform && (
-              <div style={{display:"flex",alignItems:"center",gap:6,marginTop:10,fontSize:12,color:"#ffffff77"}}>
-                <span style={{width:8,height:8,borderRadius:"50%",background:platform.color,display:"inline-block"}}/>
-                {platform.name} detectado
-              </div>
-            )}
-          </div>
-
-          {/* Preview */}
-          {phase!=="idle" && thumbSrc && (
-            <div className="fade-in" style={{...glass(),overflow:"hidden",display:"flex",
-              flexWrap:"wrap",gap:0,marginBottom:16}}>
-              <div style={{position:"relative",flexShrink:0,width:200,minWidth:160}}>
-                <img src={thumbSrc} alt="Preview" style={{width:"100%",height:120,objectFit:"cover",display:"block"}}/>
-                <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",
-                  justifyContent:"center",background:"rgba(0,0,0,0.38)",fontSize:24,color:"#fff",cursor:"pointer"}}>▶</div>
-              </div>
-              <div style={{padding:"18px 18px 18px 18px",display:"flex",flexDirection:"column",gap:6,justifyContent:"center",flex:1}}>
-                <div style={{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:15,color:"#fff"}}>Prévia do Vídeo</div>
-                <div style={{fontSize:12,color:"#ffffff66"}}>
-                  <span style={{color:platform?.color}}>{platform?.icon} {platform?.name}</span>
-                  &nbsp;·&nbsp; HD disponível &nbsp;·&nbsp; Áudio: Sim
-                </div>
-                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
-                  {["✓ Processável","✓ Legendas","✓ Thumbnail"].map(t=>(
-                    <span key={t} style={{background:"rgba(16,185,129,0.12)",border:"1px solid rgba(16,185,129,0.3)",
-                      color:"#10B981",borderRadius:6,padding:"2px 8px",fontSize:11}}>{t}</span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Tools grid */}
-          {(phase==="idle"||phase==="preview") && (<>
-            <div style={{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:12,
-              color:"#ffffff44",textTransform:"uppercase",letterSpacing:"1.5px",marginBottom:14}}>
-              Escolha a operação
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(158px,1fr))",gap:12,marginBottom:20}}>
-              {TOOLS.map(t=>(
-                <button key={t.id} className="tool-card" onClick={()=>{setTool(t.id);setQuality("");}} style={{
-                  background:tool===t.id?"rgba(255,255,255,0.06)":"rgba(255,255,255,0.03)",
-                  backdropFilter:"blur(16px)",
-                  border:"1px solid "+(tool===t.id?t.color:"rgba(255,255,255,0.07)"),
-                  borderRadius:14,padding:"18px 14px",cursor:"pointer",textAlign:"left",
-                  position:"relative",display:"flex",flexDirection:"column",gap:6,
-                  boxShadow:tool===t.id?`0 0 24px ${t.color}44`:"none",
-                  fontFamily:"'DM Sans',sans-serif",
-                }}>
-                  {!t.free && (
-                    <div style={{position:"absolute",top:8,right:8,
-                      background:"linear-gradient(135deg,#F59E0B,#EF4444)",
-                      borderRadius:4,fontSize:9,fontWeight:700,color:"#fff",
-                      padding:"2px 5px",letterSpacing:"0.5px"}}>PRO</div>
-                  )}
-                  <div style={{width:36,height:36,borderRadius:9,display:"flex",alignItems:"center",
-                    justifyContent:"center",fontSize:16,marginBottom:4,
-                    background:`${t.color}22`,color:t.color}}>{t.icon}</div>
-                  <div style={{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:13,color:"#fff",lineHeight:1.2}}>{t.label}</div>
-                  <div style={{fontSize:11,color:"#ffffff55",lineHeight:1.4}}>{t.desc}</div>
-                  <div style={{border:"1px solid",borderColor:`${t.color}44`,color:t.color,
-                    borderRadius:5,fontSize:10,padding:"2px 6px",marginTop:4,
-                    alignSelf:"flex-start",fontWeight:500}}>{t.badge}</div>
-                </button>
-              ))}
-            </div>
-
-            {/* Quality options */}
-            {(tool==="mp3"||tool==="mp4") && (
-              <div className="fade-in" style={{...glass(),padding:"18px 20px",marginBottom:20}}>
-                <div style={{fontSize:12,fontWeight:600,color:"#ffffff88",marginBottom:12,
-                  textTransform:"uppercase",letterSpacing:"0.8px"}}>
-                  {tool==="mp3"?"Qualidade de áudio":"Resolução do vídeo"}
-                </div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-                  {QUALITY[tool].map(q=>(
-                    <button key={q} className="quality-btn" onClick={()=>setQuality(q)} style={{
-                      background:quality===q?"rgba(168,85,247,0.15)":"rgba(255,255,255,0.05)",
-                      border:"1px solid "+(quality===q?"#A855F7":"rgba(255,255,255,0.1)"),
-                      borderRadius:8,color:quality===q?"#A855F7":"#ffffff88",
-                      padding:"8px 16px",fontSize:13,cursor:"pointer",
-                      fontFamily:"'DM Sans',sans-serif",
-                    }}>{q}</button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Trim options */}
-            {tool==="trim" && (
-              <div className="fade-in" style={{...glass(),padding:"18px 20px",marginBottom:20}}>
-                <div style={{fontSize:12,fontWeight:600,color:"#ffffff88",marginBottom:16,
-                  textTransform:"uppercase",letterSpacing:"0.8px"}}>Definir intervalo</div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24}}>
-                  {[["⏮ Início",start,setStart],["⏭ Fim",end,setEnd]].map(([label,val,setter])=>(
-                    <div key={label} style={{display:"flex",flexDirection:"column",gap:8}}>
-                      <label style={{fontSize:12,color:"#ffffff66",fontWeight:500}}>{label}</label>
-                      <input type="range" min={0} max={300} value={val} onChange={e=>setter(+e.target.value)}/>
-                      <span style={{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:20,color:"#A855F7"}}>{formatTime(val)}</span>
-                    </div>
-                  ))}
-                </div>
-                <div style={{marginTop:14,fontSize:13,color:"#ffffff55",textAlign:"center"}}>
-                  Duração: <strong style={{color:"#fff"}}>{formatTime(Math.max(0,end-start))}</strong>
-                </div>
-              </div>
-            )}
-
-            {/* Process button */}
-            <button onClick={startProcessing} style={{
-              width:"100%",padding:"18px 24px",border:"none",borderRadius:14,color:"#fff",
-              fontSize:16,fontFamily:"'Syne',sans-serif",fontWeight:700,
-              cursor:tool&&url?"pointer":"not-allowed",
-              display:"flex",alignItems:"center",justifyContent:"center",gap:10,
-              letterSpacing:"0.3px",marginBottom:24,
-              background:activeTool
-                ?`linear-gradient(135deg,${activeTool.color},${activeTool.color}88)`
-                :"linear-gradient(135deg,#A855F7,#3B82F6)",
-              opacity:tool&&url?1:0.45,
-              transition:"opacity 0.2s,transform 0.15s",
-            }}>
-              <span style={{fontSize:20}}>{activeTool?.icon||"⚡"}</span>
-              {activeTool?`Processar: ${activeTool.label}`:"Selecione uma operação"}
-              <span style={{marginLeft:"auto",fontSize:18}}>→</span>
-            </button>
-          </>)}
-
-          {/* Processing */}
-          {phase==="processing" && (
-            <ProgressCard progress={progress} label={progLabel} color={activeTool?.color||"#A855F7"}/>
-          )}
-
-          {/* Done */}
-          {phase==="done" && (
-            <div className="fade-in" style={{
-              background:"rgba(16,185,129,0.07)",border:"1px solid rgba(16,185,129,0.25)",
-              borderRadius:16,padding:28,textAlign:"center",marginBottom:20,
-            }}>
-              <div style={{width:52,height:52,borderRadius:"50%",
-                background:"rgba(16,185,129,0.15)",border:"2px solid #10B981",
-                display:"flex",alignItems:"center",justifyContent:"center",
-                fontSize:22,color:"#10B981",margin:"0 auto 14px"}}>✓</div>
-              <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:20,color:"#fff",marginBottom:6}}>
-                Pronto para baixar!
-              </div>
-              <div style={{fontSize:13,color:"#ffffff66",marginBottom:22}}>
-                {activeTool?.label} {quality&&`· ${quality}`} · Arquivo simulado
-              </div>
-              <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}>
-                <button style={{
-                  background:"linear-gradient(135deg,#10B981,#059669)",border:"none",
-                  borderRadius:10,color:"#fff",padding:"12px 28px",fontSize:14,
-                  fontFamily:"'Syne',sans-serif",fontWeight:700,cursor:"pointer"}}>
-                  ⬇ Baixar Arquivo
-                </button>
-                <button onClick={reset} style={{
-                  background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",
-                  borderRadius:10,color:"#ffffff88",padding:"12px 22px",fontSize:14,
-                  cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
-                  + Novo processamento
-                </button>
-              </div>
-            </div>
-          )}
-
-        </>)}
-
-        {/* ════ TAB: HISTÓRICO ════ */}
-        {tab==="history" && (
-          <div className="fade-in">
-            <div style={{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:12,
-              color:"#ffffff44",textTransform:"uppercase",letterSpacing:"1.5px",marginBottom:16}}>
-              📂 Histórico de Downloads
-            </div>
-            {loggedIn ? (
-              <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                {HISTORY.map((item,i)=>(
-                  <div key={i} className="fade-in" style={{...glass(),padding:"14px 16px",
-                    display:"flex",alignItems:"center",gap:14}}>
-                    <span style={{fontSize:22,flexShrink:0}}>
-                      {item.type.startsWith("MP3")?"🎵":item.type.startsWith("MP4")?"🎬":"🖼️"}
-                    </span>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontWeight:500,fontSize:14,color:"#fff",
-                        whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.title}</div>
-                      <div style={{fontSize:11,color:"#ffffff44",marginTop:2}}>
-                        {item.platform} · {item.type} · {item.size}
-                      </div>
-                    </div>
-                    <div style={{fontSize:11,color:"#ffffff33",flexShrink:0}}>{item.date}</div>
-                    <button style={{background:"rgba(168,85,247,0.1)",border:"1px solid rgba(168,85,247,0.3)",
-                      borderRadius:7,color:"#A855F7",width:32,height:32,cursor:"pointer",
-                      fontSize:16,flexShrink:0}}>↻</button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div style={{textAlign:"center",padding:"60px 20px",display:"flex",
-                flexDirection:"column",alignItems:"center",gap:14}}>
-                <span style={{fontSize:48,opacity:0.35}}>🔒</span>
-                <p style={{fontSize:15,color:"#ffffff55"}}>Faça login para ver seu histórico</p>
-                <button onClick={()=>setShowLogin(true)} style={{
-                  background:"linear-gradient(135deg,#A855F7,#3B82F6)",border:"none",
-                  borderRadius:10,color:"#fff",padding:"10px 24px",fontSize:14,
-                  cursor:"pointer",fontFamily:"'Syne',sans-serif",fontWeight:700}}>
-                  Entrar agora
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ════ TAB: PREMIUM ════ */}
-        {tab==="premium" && (
-          <div className="fade-in">
-            <div style={{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:12,
-              color:"#ffffff44",textTransform:"uppercase",letterSpacing:"1.5px",marginBottom:16}}>
-              ⭐ Planos
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:16}}>
-              {PLANS.map(plan=>(
-                <div key={plan.name} style={{
-                  background:"rgba(255,255,255,0.03)",
-                  border:"1px solid "+(plan.highlight?plan.color:"rgba(255,255,255,0.08)"),
-                  borderRadius:16,padding:24,position:"relative",
-                  display:"flex",flexDirection:"column",gap:8,
-                  boxShadow:plan.highlight?`0 0 32px ${plan.color}22`:"none",
-                }}>
-                  {plan.highlight && (
-                    <div style={{position:"absolute",top:-11,left:"50%",transform:"translateX(-50%)",
-                      background:plan.color,borderRadius:8,padding:"3px 12px",
-                      fontSize:9,fontWeight:700,color:"#fff",letterSpacing:"1px",whiteSpace:"nowrap"}}>
-                      MAIS POPULAR
-                    </div>
-                  )}
-                  <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:16,color:plan.color}}>{plan.name}</div>
-                  <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:28,color:"#fff",marginBottom:4}}>
-                    {plan.price}<span style={{fontSize:14,color:"#ffffff44",fontWeight:400}}>{plan.per}</span>
-                  </div>
-                  <div style={{display:"flex",flexDirection:"column",gap:7,flex:1,marginTop:4}}>
-                    {plan.features.map(f=>(
-                      <div key={f} style={{fontSize:13,color:"#ffffff88",display:"flex",gap:8}}>
-                        <span style={{color:plan.color}}>✓</span> {f}
-                      </div>
-                    ))}
-                    {plan.locked.map(f=>(
-                      <div key={f} style={{fontSize:13,color:"#ffffff88",display:"flex",gap:8,opacity:0.32}}>
-                        <span>✗</span> {f}
-                      </div>
-                    ))}
-                  </div>
-                  <button style={{
-                    width:"100%",padding:11,
-                    border:"1px solid "+plan.color,
-                    borderRadius:10,fontSize:14,
-                    fontFamily:"'Syne',sans-serif",fontWeight:700,cursor:"pointer",marginTop:12,
-                    background:plan.highlight?plan.color:"transparent",
-                    color:plan.highlight?"#fff":plan.color,
-                  }}>{plan.cta}</button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* FOOTER */}
-        <footer style={{
-          borderTop:"1px solid rgba(255,255,255,0.06)",
-          marginTop:40,paddingTop:24,
-          display:"flex",justifyContent:"space-between",
-          alignItems:"center",flexWrap:"wrap",gap:12,
-        }}>
-          <div style={{fontSize:12,color:"#ffffff33"}}>© 2026 MediaTool Pro · Para uso educacional e criativo</div>
-          <div style={{display:"flex",gap:20,fontSize:12,color:"#ffffff44",cursor:"pointer"}}>
-            <span>Termos de Uso</span>
-            <span>Privacidade</span>
-            <span>Suporte</span>
-          </div>
-        </footer>
-
-      </div>{/* /container */}
-    </div>
+/* Particles */
+function Particles() {
+  return e("div", { style:{ position:"fixed",inset:0,pointerEvents:"none",zIndex:0,overflow:"hidden" } },
+    PARTICLES.map(function(p) {
+      return e("div", { key:p.id, style:{
+        position:"absolute", left:p.x+"%", top:p.y+"%",
+        width:p.size, height:p.size, borderRadius:"50%",
+        background:"#A855F7", opacity:p.op,
+        animation:"floatUp "+p.speed+"s linear "+p.delay+"s infinite",
+      }});
+    })
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+/* Login Modal */
+function LoginModal(props) {
+  var _a = useState(""); var em = _a[0]; var setEm = _a[1];
+  var _b = useState(""); var pw = _b[0]; var setPw = _b[1];
+  return e("div", {
+    onClick: props.onClose,
+    style:{ position:"fixed",inset:0,background:"rgba(0,0,0,0.72)",
+      backdropFilter:"blur(10px)",zIndex:200,display:"flex",
+      alignItems:"center",justifyContent:"center",padding:20 }
+  },
+    e("div", { onClick:function(ev){ev.stopPropagation();}, className:"fade-in", style:{
+      background:"rgba(10,8,30,0.97)",
+      border:"1px solid rgba(168,85,247,0.35)",
+      borderRadius:20, padding:32, width:"100%", maxWidth:380,
+      boxShadow:"0 24px 64px rgba(0,0,0,0.6)",
+    }},
+      e("h3",{style:{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:22,color:"#fff",marginBottom:6}},"Acesso Premium"),
+      e("p",{style:{fontSize:13,color:"#ffffff55",marginBottom:24}},"Esta fun\u00e7\u00e3o requer uma conta gratuita"),
+      e("input",{type:"email",placeholder:"seu@email.com",value:em,
+        onChange:function(ev){setEm(ev.target.value);},
+        style:{display:"block",width:"100%",background:"rgba(255,255,255,0.05)",
+          border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,color:"#fff",
+          padding:"12px 14px",fontSize:14,outline:"none",marginBottom:12,
+          fontFamily:"'DM Sans',sans-serif"}}),
+      e("input",{type:"password",placeholder:"Senha",value:pw,
+        onChange:function(ev){setPw(ev.target.value);},
+        style:{display:"block",width:"100%",background:"rgba(255,255,255,0.05)",
+          border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,color:"#fff",
+          padding:"12px 14px",fontSize:14,outline:"none",marginBottom:12,
+          fontFamily:"'DM Sans',sans-serif"}}),
+      e("button",{
+        onClick:function(){if(em&&pw)props.onLogin();},
+        style:{width:"100%",background:"linear-gradient(135deg,#A855F7,#3B82F6)",
+          border:"none",borderRadius:10,color:"#fff",padding:"13px",fontSize:15,
+          fontFamily:"'Syne',sans-serif",fontWeight:700,cursor:"pointer",marginTop:4}
+      },"Entrar \u2192"),
+      e("p",{style:{textAlign:"center",fontSize:12,color:"#ffffff44",marginTop:16}},
+        "N\u00e3o tem conta? ",
+        e("span",{style:{color:"#A855F7",cursor:"pointer"}},"Criar gr\u00e1tis")
+      )
+    )
+  );
+}
+
+/* Progress Card */
+function ProgressCard(props) {
+  var steps = ["An\u00e1lise","Processamento","Otimiza\u00e7\u00e3o","Download"];
+  return e("div", { className:"fade-in", style: glass({padding:24,marginBottom:20}) },
+    e("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:12,fontSize:13,color:"#ffffff88"}},
+      e("span",{className:"pulse"},props.label),
+      e("span",{style:{fontFamily:"'Syne',sans-serif",fontWeight:700,color:"#fff"}},Math.round(props.progress)+"%")
+    ),
+    e("div",{style:{height:6,background:"#ffffff10",borderRadius:3,overflow:"hidden",marginBottom:16}},
+      e("div",{style:{
+        height:"100%",borderRadius:3,transition:"width 0.1s ease",
+        background:"linear-gradient(90deg,"+props.color+","+props.color+"99)",
+        width:props.progress+"%",
+      }})
+    ),
+    e("div",{style:{display:"flex",justifyContent:"space-between",fontSize:11,flexWrap:"wrap",gap:6}},
+      steps.map(function(s,i){
+        return e("span",{key:s,style:{color:props.progress>i*25?props.color:"#ffffff33",transition:"color 0.4s"}},
+          (props.progress>i*25?"\u2713":"\u25CB")+" "+s);
+      })
+    )
+  );
+}
+
+/* App */
+function App() {
+  var _url     = useState(""); var url=_url[0]; var setUrl=_url[1];
+  var _plat    = useState(null); var plat=_plat[0]; var setPlat=_plat[1];
+  var _tool    = useState(null); var tool=_tool[0]; var setTool=_tool[1];
+  var _qual    = useState(""); var quality=_qual[0]; var setQuality=_qual[1];
+  var _start   = useState(0); var start=_start[0]; var setStart=_start[1];
+  var _end     = useState(60); var end=_end[0]; var setEnd=_end[1];
+  var _phase   = useState("idle"); var phase=_phase[0]; var setPhase=_phase[1];
+  var _prog    = useState(0); var prog=_prog[0]; var setProg=_prog[1];
+  var _lbl     = useState(""); var progLbl=_lbl[0]; var setProgLbl=_lbl[1];
+  var _tab     = useState("tool"); var tab=_tab[0]; var setTab=_tab[1];
+  var _li      = useState(false); var loggedIn=_li[0]; var setLoggedIn=_li[1];
+  var _sl      = useState(false); var showLogin=_sl[0]; var setShowLogin=_sl[1];
+  var timer    = useRef(null);
+
+  useEffect(function(){
+    var p = detectPlatform(url);
+    setPlat(p);
+    setPhase(url && p ? "preview" : "idle");
+  }, [url]);
+
+  function startProcessing() {
+    if (!tool || !url) return;
+    var t = null;
+    for (var i=0;i<TOOLS.length;i++) { if(TOOLS[i].id===tool){t=TOOLS[i];break;} }
+    if (!t.free && !loggedIn) { setShowLogin(true); return; }
+    setPhase("processing"); setProg(0);
+    var steps = ["Conectando ao servidor...","Analisando m\u00eddia...","Processando...","Preparando download..."];
+    var si = 0; setProgLbl(steps[0]);
+    timer.current = setInterval(function(){
+      setProg(function(p){
+        var nx = Math.min(p + Math.random()*4+1, 100);
+        var ni = Math.floor((nx/100)*(steps.length-1));
+        if (ni !== si) { si=ni; setProgLbl(steps[ni]); }
+        if (nx >= 100) { clearInterval(timer.current); setTimeout(function(){ setPhase("done"); }, 450); }
+        return nx;
+      });
+    }, 80);
+  }
+
+  function reset() {
+    clearInterval(timer.current);
+    setUrl(""); setTool(null); setQuality(""); setPhase("idle"); setProg(0);
+  }
+
+  var at = null;
+  for (var i=0;i<TOOLS.length;i++){if(TOOLS[i].id===tool){at=TOOLS[i];break;}}
+  var src = plat ? "https://picsum.photos/seed/"+encodeURIComponent(url)+"/640/360" : null;
+
+  /* --- Tool Tab --- */
+  function renderToolTab() {
+    return e(Fragment, null,
+
+      /* Hero */
+      e("div",{className:"fade-in",style:{textAlign:"center",padding:"32px 0 28px"}},
+        e("div",{style:{display:"inline-block",background:"rgba(168,85,247,0.1)",
+          border:"1px solid rgba(168,85,247,0.3)",borderRadius:20,
+          padding:"5px 14px",fontSize:12,color:"#A855F7",marginBottom:16,letterSpacing:"0.3px"}},
+          "\uD83D\uDE80 Processamento em nuvem"),
+        e("h1",{style:{fontFamily:"'Syne',sans-serif",fontSize:"clamp(30px,6vw,52px)",
+          fontWeight:800,lineHeight:1.1,color:"#fff",marginBottom:12}},
+          "Processe qualquer",e("br"),
+          e("span",{className:"shimmer-text"},"v\u00eddeo online")),
+        e("p",{style:{fontSize:14,color:"#ffffff55",letterSpacing:"0.5px"}},
+          "YouTube \u00b7 Instagram \u00b7 TikTok \u00b7 Facebook \u00b7 Vimeo \u00b7 e mais")
+      ),
+
+      /* URL Input */
+      e("div",{className:"fade-in",style:glass({padding:20,marginBottom:16})},
+        e("div",{style:{display:"flex",alignItems:"center",gap:12,
+          background:"rgba(0,0,0,0.3)",border:"1px solid rgba(255,255,255,0.1)",
+          borderRadius:12,padding:"4px 8px 4px 16px"}},
+          e("span",{style:{fontSize:18,flexShrink:0}},
+            plat ? e("span",{style:{color:plat.color,fontWeight:700}},plat.icon) : "\uD83D\uDD17"),
+          e("input",{type:"url",
+            placeholder:"Cole o link do v\u00eddeo aqui... (YouTube, TikTok, Instagram...)",
+            value:url, onChange:function(ev){setUrl(ev.target.value);},
+            style:{flex:1,background:"transparent",border:"none",outline:"none",
+              color:"#fff",fontSize:15,padding:"12px 0",fontFamily:"'DM Sans',sans-serif"}}),
+          url && e("button",{onClick:reset,style:{
+            background:"rgba(255,255,255,0.08)",border:"none",borderRadius:8,
+            color:"#ffffff66",width:28,height:28,cursor:"pointer",fontSize:12,flexShrink:0
+          }},"\u2715")
+        ),
+        plat && e("div",{style:{display:"flex",alignItems:"center",gap:6,marginTop:10,fontSize:12,color:"#ffffff77"}},
+          e("span",{style:{width:8,height:8,borderRadius:"50%",background:plat.color,display:"inline-block"}}),
+          plat.name+" detectado"
+        )
+      ),
+
+      /* Preview */
+      (phase!=="idle" && src) && e("div",{className:"fade-in",style:glass({overflow:"hidden",display:"flex",flexWrap:"wrap",marginBottom:16})},
+        e("div",{style:{position:"relative",flexShrink:0,width:200,minWidth:160}},
+          e("img",{src:src,alt:"Preview",style:{width:"100%",height:120,objectFit:"cover",display:"block"}}),
+          e("div",{style:{position:"absolute",inset:0,display:"flex",alignItems:"center",
+            justifyContent:"center",background:"rgba(0,0,0,0.38)",fontSize:24,color:"#fff",cursor:"pointer"}},"\u25B6")
+        ),
+        e("div",{style:{padding:18,display:"flex",flexDirection:"column",gap:6,justifyContent:"center",flex:1}},
+          e("div",{style:{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:15,color:"#fff"}},"Pr\u00e9via do V\u00eddeo"),
+          e("div",{style:{fontSize:12,color:"#ffffff66"}},
+            e("span",{style:{color:plat&&plat.color}},plat&&(plat.icon+" "+plat.name)),
+            " \u00b7 HD dispon\u00edvel \u00b7 \u00c1udio: Sim"
+          ),
+          e("div",{style:{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}},
+            ["\u2713 Process\u00e1vel","\u2713 Legendas","\u2713 Thumbnail"].map(function(t){
+              return e("span",{key:t,style:{background:"rgba(16,185,129,0.12)",
+                border:"1px solid rgba(16,185,129,0.3)",color:"#10B981",
+                borderRadius:6,padding:"2px 8px",fontSize:11}},t);
+            })
+          )
+        )
+      ),
+
+      /* Tools */
+      (phase==="idle"||phase==="preview") && e(Fragment,null,
+        e("div",{style:{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:12,
+          color:"#ffffff44",textTransform:"uppercase",letterSpacing:"1.5px",marginBottom:14}},
+          "Escolha a opera\u00e7\u00e3o"),
+        e("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(158px,1fr))",gap:12,marginBottom:20}},
+          TOOLS.map(function(t){
+            var active = tool===t.id;
+            return e("button",{key:t.id,className:"tool-card",
+              onClick:function(){setTool(t.id);setQuality("");},
+              style:{
+                background:active?"rgba(255,255,255,0.06)":"rgba(255,255,255,0.03)",
+                backdropFilter:"blur(16px)",
+                border:"1px solid "+(active?t.color:"rgba(255,255,255,0.07)"),
+                borderRadius:14,padding:"18px 14px",cursor:"pointer",textAlign:"left",
+                position:"relative",display:"flex",flexDirection:"column",gap:6,
+                boxShadow:active?"0 0 24px "+t.color+"44":"none",
+                fontFamily:"'DM Sans',sans-serif",
+              }},
+              !t.free && e("div",{style:{position:"absolute",top:8,right:8,
+                background:"linear-gradient(135deg,#F59E0B,#EF4444)",
+                borderRadius:4,fontSize:9,fontWeight:700,color:"#fff",
+                padding:"2px 5px",letterSpacing:"0.5px"}},"PRO"),
+              e("div",{style:{width:36,height:36,borderRadius:9,display:"flex",alignItems:"center",
+                justifyContent:"center",fontSize:16,marginBottom:4,
+                background:t.color+"22",color:t.color}},t.icon),
+              e("div",{style:{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:13,color:"#fff",lineHeight:1.2}},t.label),
+              e("div",{style:{fontSize:11,color:"#ffffff55",lineHeight:1.4}},t.desc),
+              e("div",{style:{border:"1px solid",borderColor:t.color+"44",color:t.color,
+                borderRadius:5,fontSize:10,padding:"2px 6px",marginTop:4,
+                alignSelf:"flex-start",fontWeight:500}},t.badge)
+            );
+          })
+        ),
+
+        /* Quality */
+        (tool==="mp3"||tool==="mp4") && e("div",{className:"fade-in",style:glass({padding:"18px 20px",marginBottom:20})},
+          e("div",{style:{fontSize:12,fontWeight:600,color:"#ffffff88",marginBottom:12,
+            textTransform:"uppercase",letterSpacing:"0.8px"}},
+            tool==="mp3"?"Qualidade de \u00e1udio":"Resolu\u00e7\u00e3o do v\u00eddeo"),
+          e("div",{style:{display:"flex",flexWrap:"wrap",gap:8}},
+            QUALITY[tool].map(function(q){
+              return e("button",{key:q,className:"q-btn",onClick:function(){setQuality(q);},style:{
+                background:quality===q?"rgba(168,85,247,0.15)":"rgba(255,255,255,0.05)",
+                border:"1px solid "+(quality===q?"#A855F7":"rgba(255,255,255,0.1)"),
+                borderRadius:8,color:quality===q?"#A855F7":"#ffffff88",
+                padding:"8px 16px",fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",
+              }},q);
+            })
+          )
+        ),
+
+        /* Trim */
+        tool==="trim" && e("div",{className:"fade-in",style:glass({padding:"18px 20px",marginBottom:20})},
+          e("div",{style:{fontSize:12,fontWeight:600,color:"#ffffff88",marginBottom:16,
+            textTransform:"uppercase",letterSpacing:"0.8px"}},"Definir intervalo"),
+          e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24}},
+            [["\u23EE In\u00edcio",start,setStart],["\u23ED Fim",end,setEnd]].map(function(row){
+              return e("div",{key:row[0],style:{display:"flex",flexDirection:"column",gap:8}},
+                e("label",{style:{fontSize:12,color:"#ffffff66",fontWeight:500}},row[0]),
+                e("input",{type:"range",min:0,max:300,value:row[1],
+                  onChange:function(ev){row[2](+ev.target.value);}}),
+                e("span",{style:{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:20,color:"#A855F7"}},fmt(row[1]))
+              );
+            })
+          ),
+          e("div",{style:{marginTop:14,fontSize:13,color:"#ffffff55",textAlign:"center"}},
+            "Dura\u00e7\u00e3o: ",
+            e("strong",{style:{color:"#fff"}},fmt(Math.max(0,end-start)))
+          )
+        ),
+
+        /* Process Button */
+        e("button",{onClick:startProcessing,style:{
+          width:"100%",padding:"18px 24px",border:"none",borderRadius:14,color:"#fff",
+          fontSize:16,fontFamily:"'Syne',sans-serif",fontWeight:700,
+          cursor:(tool&&url)?"pointer":"not-allowed",
+          display:"flex",alignItems:"center",justifyContent:"center",gap:10,
+          letterSpacing:"0.3px",marginBottom:24,
+          background:at?"linear-gradient(135deg,"+at.color+","+at.color+"88)"
+                      :"linear-gradient(135deg,#A855F7,#3B82F6)",
+          opacity:(tool&&url)?1:0.45,
+          transition:"opacity 0.2s",
+        }},
+          e("span",{style:{fontSize:20}},at?at.icon:"\u26A1"),
+          at?"Processar: "+at.label:"Selecione uma opera\u00e7\u00e3o",
+          e("span",{style:{marginLeft:"auto",fontSize:18}},"\u2192")
+        )
+      ),
+
+      phase==="processing" && e(ProgressCard,{progress:prog,label:progLbl,color:at?at.color:"#A855F7"}),
+
+      phase==="done" && e("div",{className:"fade-in",style:{
+        background:"rgba(16,185,129,0.07)",border:"1px solid rgba(16,185,129,0.25)",
+        borderRadius:16,padding:28,textAlign:"center",marginBottom:20,
+      }},
+        e("div",{style:{width:52,height:52,borderRadius:"50%",background:"rgba(16,185,129,0.15)",
+          border:"2px solid #10B981",display:"flex",alignItems:"center",justifyContent:"center",
+          fontSize:22,color:"#10B981",margin:"0 auto 14px"}},"\u2713"),
+        e("div",{style:{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:20,color:"#fff",marginBottom:6}},
+          "Pronto para baixar!"),
+        e("div",{style:{fontSize:13,color:"#ffffff66",marginBottom:22}},
+          (at?at.label:"")+(quality?" \u00b7 "+quality:"")+" \u00b7 Arquivo simulado"),
+        e("div",{style:{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}},
+          e("button",{style:{background:"linear-gradient(135deg,#10B981,#059669)",border:"none",
+            borderRadius:10,color:"#fff",padding:"12px 28px",fontSize:14,
+            fontFamily:"'Syne',sans-serif",fontWeight:700,cursor:"pointer"}},
+            "\u2B07 Baixar Arquivo"),
+          e("button",{onClick:reset,style:{background:"rgba(255,255,255,0.05)",
+            border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,color:"#ffffff88",
+            padding:"12px 22px",fontSize:14,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},
+            "+ Novo processamento")
+        )
+      )
+    );
+  }
+
+  /* --- History Tab --- */
+  function renderHistoryTab() {
+    return e("div",{className:"fade-in"},
+      e("div",{style:{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:12,
+        color:"#ffffff44",textTransform:"uppercase",letterSpacing:"1.5px",marginBottom:16}},
+        "\uD83D\uDCC2 Hist\u00f3rico de Downloads"),
+      loggedIn
+        ? e("div",{style:{display:"flex",flexDirection:"column",gap:10}},
+            HISTORY.map(function(item,i){
+              var icon = item.type.startsWith("MP3")?"\uD83C\uDFB5":item.type.startsWith("MP4")?"\uD83C\uDFAC":"\uD83D\uDDBC\uFE0F";
+              return e("div",{key:i,className:"fade-in",style:glass({padding:"14px 16px",display:"flex",alignItems:"center",gap:14})},
+                e("span",{style:{fontSize:22,flexShrink:0}},icon),
+                e("div",{style:{flex:1,minWidth:0}},
+                  e("div",{style:{fontWeight:500,fontSize:14,color:"#fff",
+                    whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},item.title),
+                  e("div",{style:{fontSize:11,color:"#ffffff44",marginTop:2}},
+                    item.platform+" \u00b7 "+item.type+" \u00b7 "+item.size)
+                ),
+                e("div",{style:{fontSize:11,color:"#ffffff33",flexShrink:0}},item.date),
+                e("button",{style:{background:"rgba(168,85,247,0.1)",border:"1px solid rgba(168,85,247,0.3)",
+                  borderRadius:7,color:"#A855F7",width:32,height:32,cursor:"pointer",fontSize:16,flexShrink:0}},"\u21BB")
+              );
+            })
+          )
+        : e("div",{style:{textAlign:"center",padding:"60px 20px",display:"flex",
+            flexDirection:"column",alignItems:"center",gap:14}},
+            e("span",{style:{fontSize:48,opacity:0.35}},"\uD83D\uDD12"),
+            e("p",{style:{fontSize:15,color:"#ffffff55"}},"Fa\u00e7a login para ver seu hist\u00f3rico"),
+            e("button",{onClick:function(){setShowLogin(true);},style:{
+              background:"linear-gradient(135deg,#A855F7,#3B82F6)",border:"none",
+              borderRadius:10,color:"#fff",padding:"10px 24px",fontSize:14,
+              cursor:"pointer",fontFamily:"'Syne',sans-serif",fontWeight:700}},
+              "Entrar agora")
+          )
+    );
+  }
+
+  /* --- Premium Tab --- */
+  function renderPremiumTab() {
+    return e("div",{className:"fade-in"},
+      e("div",{style:{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:12,
+        color:"#ffffff44",textTransform:"uppercase",letterSpacing:"1.5px",marginBottom:16}},
+        "\u2B50 Planos"),
+      e("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:16}},
+        PLANS.map(function(plan){
+          return e("div",{key:plan.name,style:{
+            background:"rgba(255,255,255,0.03)",
+            border:"1px solid "+(plan.hi?plan.color:"rgba(255,255,255,0.08)"),
+            borderRadius:16,padding:24,position:"relative",
+            display:"flex",flexDirection:"column",gap:8,
+            boxShadow:plan.hi?"0 0 32px "+plan.color+"22":"none",
+          }},
+            plan.hi && e("div",{style:{position:"absolute",top:-11,left:"50%",
+              transform:"translateX(-50%)",background:plan.color,borderRadius:8,
+              padding:"3px 12px",fontSize:9,fontWeight:700,color:"#fff",
+              letterSpacing:"1px",whiteSpace:"nowrap"}},"MAIS POPULAR"),
+            e("div",{style:{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:16,color:plan.color}},plan.name),
+            e("div",{style:{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:28,color:"#fff",marginBottom:4}},
+              plan.price,e("span",{style:{fontSize:14,color:"#ffffff44",fontWeight:400}},plan.per)),
+            e("div",{style:{display:"flex",flexDirection:"column",gap:7,flex:1,marginTop:4}},
+              plan.ok.map(function(f){
+                return e("div",{key:f,style:{fontSize:13,color:"#ffffff88",display:"flex",gap:8}},
+                  e("span",{style:{color:plan.color}},"\u2713")," "+f);
+              }),
+              plan.no.map(function(f){
+                return e("div",{key:f,style:{fontSize:13,color:"#ffffff88",display:"flex",gap:8,opacity:0.32}},
+                  e("span",null,"\u2717")," "+f);
+              })
+            ),
+            e("button",{style:{
+              width:"100%",padding:"11px",border:"1px solid "+plan.color,
+              borderRadius:10,fontSize:14,fontFamily:"'Syne',sans-serif",fontWeight:700,
+              cursor:"pointer",marginTop:12,
+              background:plan.hi?plan.color:"transparent",
+              color:plan.hi?"#fff":plan.color,
+            }},plan.cta)
+          );
+        })
+      )
+    );
+  }
+
+  /* --- Root Render --- */
+  return e("div",{style:{minHeight:"100vh",background:"#060612",position:"relative",overflowX:"hidden"}},
+
+    e("div",{style:{position:"fixed",inset:0,zIndex:0,pointerEvents:"none",
+      background:"radial-gradient(ellipse 80% 60% at 20% 10%,#1a0a3a 0%,transparent 60%),radial-gradient(ellipse 60% 50% at 80% 80%,#0a1a2e 0%,transparent 60%)"}}),
+    e("div",{style:{position:"fixed",inset:0,zIndex:0,pointerEvents:"none",
+      backgroundImage:"linear-gradient(rgba(168,85,247,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(168,85,247,0.04) 1px,transparent 1px)",
+      backgroundSize:"48px 48px"}}),
+    e(Particles),
+
+    showLogin && e(LoginModal,{
+      onClose:function(){setShowLogin(false);},
+      onLogin:function(){setLoggedIn(true);setShowLogin(false);}
+    }),
+
+    e("div",{style:{position:"relative",zIndex:1,maxWidth:940,margin:"0 auto",padding:"0 20px 56px"}},
+
+      /* Header */
+      e("header",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",
+        padding:"28px 0 18px",flexWrap:"wrap",gap:14}},
+        e("div",{style:{display:"flex",alignItems:"center",gap:12}},
+          e("span",{style:{fontSize:28,color:"#A855F7",lineHeight:1}},"\u2B21"),
+          e("div",null,
+            e("div",{style:{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:20,color:"#fff",letterSpacing:"-0.3px"}},
+              "MediaTool ",
+              e("span",{style:{background:"linear-gradient(90deg,#A855F7,#3B82F6)",
+                WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}},"Pro")
+            ),
+            e("div",{style:{fontSize:11,color:"#ffffff44",letterSpacing:"0.5px",marginTop:2}},"Para criadores de conte\u00fado")
+          )
+        ),
+        e("nav",{style:{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}},
+          [["tool","\uD83D\uDD27 Ferramenta"],["history","\uD83D\uDCC2 Hist\u00f3rico"],["premium","\u2B50 Premium"]].map(function(row){
+            var t=row[0]; var label=row[1]; var active=tab===t;
+            return e("button",{key:t,className:"nav-btn",onClick:function(){setTab(t);},style:{
+              background:active?"rgba(255,255,255,0.08)":"transparent",
+              border:"1px solid "+(active?"rgba(168,85,247,0.4)":"rgba(255,255,255,0.1)"),
+              borderRadius:8,color:active?"#fff":"#ffffff66",
+              padding:"7px 14px",fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",
+            }},label);
+          }),
+          loggedIn
+            ? e("div",{style:{width:32,height:32,borderRadius:"50%",
+                background:"linear-gradient(135deg,#A855F7,#3B82F6)",
+                display:"flex",alignItems:"center",justifyContent:"center",
+                fontWeight:700,fontSize:13,cursor:"pointer"}},"V")
+            : e("button",{onClick:function(){setShowLogin(true);},style:{
+                background:"linear-gradient(135deg,#A855F7,#3B82F6)",
+                border:"none",borderRadius:8,color:"#fff",
+                padding:"7px 16px",fontSize:12,cursor:"pointer",
+                fontFamily:"'DM Sans',sans-serif",fontWeight:500}},"Entrar")
+        )
+      ),
+
+      tab==="tool"    && renderToolTab(),
+      tab==="history" && renderHistoryTab(),
+      tab==="premium" && renderPremiumTab(),
+
+      e("footer",{style:{borderTop:"1px solid rgba(255,255,255,0.06)",
+        marginTop:40,paddingTop:24,display:"flex",justifyContent:"space-between",
+        alignItems:"center",flexWrap:"wrap",gap:12}},
+        e("div",{style:{fontSize:12,color:"#ffffff33"}},"\u00a9 2026 MediaTool Pro \u00b7 Para uso educacional e criativo"),
+        e("div",{style:{display:"flex",gap:20,fontSize:12,color:"#ffffff44",cursor:"pointer"}},
+          e("span",null,"Termos de Uso"),e("span",null,"Privacidade"),e("span",null,"Suporte")
+        )
+      )
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(e(App));
+
+})();
 </script>
 </body>
 </html>
