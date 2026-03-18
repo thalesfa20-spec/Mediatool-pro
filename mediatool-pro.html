@@ -79,6 +79,22 @@ function getYTId(url){ var m=url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
 function gl(x){ return Object.assign({background:"rgba(255,255,255,.04)",backdropFilter:"blur(20px)",border:"1px solid rgba(255,255,255,.08)",borderRadius:16},x||{}); }
 function hdr(host){ return{"x-rapidapi-host":host,"x-rapidapi-key":KEY}; }
 
+/* CORS proxy — wraps any URL to bypass browser CORS restrictions */
+var CORS_PROXY = "https://corsproxy.io/?";
+function proxied(url){ return CORS_PROXY + encodeURIComponent(url); }
+
+/* Fetch with RapidAPI headers, CORS-safe */
+function rapidFetch(host, path){
+  var fullUrl = "https://"+host+path;
+  // First try direct (works if API has CORS headers)
+  return fetch(fullUrl, {method:"GET", headers:hdr(host)})
+    .catch(function(){
+      // Fallback: use CORS proxy (strips custom headers — only for public APIs)
+      console.warn("Direct fetch failed, trying CORS proxy for:", fullUrl);
+      return fetch(proxied(fullUrl), {method:"GET", headers:hdr(host)});
+    });
+}
+
 /* Deduplicate links by quality label, keep best (prefer higher res) */
 function dedupeLinks(links){
   var seen={};
@@ -163,8 +179,14 @@ function DlButton(props){
 
   function handleClick(){
     if(downloading) return;
-    var ext = props.quality==="MP3"||props.label.toLowerCase().indexOf("mp3")>-1 ? ".mp3" : ".mp4";
-    var filename = "mediatool-"+props.quality+ext;
+    var isMP3 = props.quality==="MP3"||props.quality==="320kbps"||(props.label||"").toLowerCase().indexOf("mp3")>-1;
+    var ext = isMP3 ? ".mp3" : ".mp4";
+    // Use provided filename (with real title) or fallback
+    var filename = props.filename
+      ? props.filename + ext
+      : "mediatool-" + (props.quality||"HD") + ext;
+    // Sanitize: remove chars not allowed in filenames
+    filename = filename.replace(/[\/:*?"<>|]/g,"").replace(/\s+/g," ").trim();
     forceDownload(
       props.url, filename,
       function(){ setDownloading(true); },
@@ -209,7 +231,7 @@ function ResultCard(props){
         e("div",{style:{fontSize:12,color:"#ffffff44",marginTop:2}},props.subtitle||""))),
     e("div",{style:{display:"flex",flexDirection:"column",gap:8}},
       props.items.map(function(item,i){
-        return e(DlButton,{key:i,url:item.url,label:item.label,quality:item.quality||"HD"});
+        return e(DlButton,{key:i,url:item.url,label:item.label,quality:item.quality||"HD",filename:item.filename||null});
       })),
     e("button",{onClick:props.onReset,style:{marginTop:12,width:"100%",
       background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.1)",
@@ -246,6 +268,14 @@ function App(){
 
   function finish(links, titleStr){
     var deduped = dedupeLinks(links);
+    // Inject filename into each item based on title + quality
+    var rawTitle = (titleStr||"").split(" · ")[0] || "download";
+    deduped = deduped.map(function(item){
+      if(item.filename) return item; // already set
+      var isMP3 = (item.quality||"").indexOf("kbps")>-1 || (item.label||"").toLowerCase().indexOf("mp3")>-1;
+      var qualSuffix = item.quality ? "-"+item.quality : "";
+      return Object.assign({}, item, {filename: rawTitle + qualSuffix});
+    });
     setPhase("done"); setMsg(null);
     setItems(deduped);
     setSub(titleStr||"");
@@ -257,19 +287,19 @@ function App(){
     if(!vid){ setErr("ID do vídeo não encontrado."); return; }
     setLoad("Convertendo para MP3... ⏳");
     function attempt(cb){
-      fetch("https://"+MP3_HOST+"/dl?id="+encodeURIComponent(vid),{method:"GET",headers:hdr(MP3_HOST)})
+      rapidFetch(MP3_HOST, "/dl?id="+encodeURIComponent(vid))
         .then(function(r){return r.json();}).then(cb)
-        .catch(function(){ setErr("Erro de rede."); });
+        .catch(function(){ setErr("Erro de rede. Verifique sua conexão e tente novamente."); });
     }
     attempt(function(data){
       if(data&&data.status==="ok"&&data.link){
-        finish([{label:"Baixar MP3",url:data.link,quality:"320kbps"}],(data.title||"Áudio")+" · MP3 · YouTube");
+        finish([{label:"Baixar MP3",url:data.link,quality:"320kbps",filename:(data.title||"audio")+"-320kbps"}],(data.title||"Áudio")+" · MP3 · YouTube");
       } else if(data&&data.status==="processing"){
         setMsg("Processando, aguarde... ⏳");
         setTimeout(function(){
           attempt(function(d2){
             if(d2&&d2.status==="ok"&&d2.link)
-              finish([{label:"Baixar MP3",url:d2.link,quality:"320kbps"}],(d2.title||"Áudio")+" · MP3");
+              finish([{label:"Baixar MP3",url:d2.link,quality:"320kbps",filename:(d2.title||"audio")+"-320kbps"}],(d2.title||"Áudio")+" · MP3");
             else setErr("Ainda processando. Tente novamente.");
           });
         },4500);
@@ -288,7 +318,7 @@ function App(){
     if(!vid){ setErr("ID do vídeo não encontrado."); return; }
     setLoad("Buscando vídeo... 🎬");
 
-    fetch("https://"+YTAPI_HOST+"/dl?id="+encodeURIComponent(vid),{method:"GET",headers:hdr(YTAPI_HOST)})
+    rapidFetch(YTAPI_HOST, "/dl?id="+encodeURIComponent(vid))
       .then(function(r){return r.json();})
       .then(function(data){
         console.log("YT MP4 raw:", JSON.stringify(data).slice(0,1000));
@@ -450,7 +480,7 @@ function App(){
   /* ── Instagram ── */
   function doInstagram(){
     setLoad("Buscando mídia do Instagram... 📸");
-    fetch("https://"+INSTA_HOST+"/index?url="+encodeURIComponent(url),{method:"GET",headers:hdr(INSTA_HOST)})
+    rapidFetch(INSTA_HOST, "/index?url="+encodeURIComponent(url))
       .then(function(r){return r.json();})
       .then(function(data){
         console.log("Instagram:",JSON.stringify(data).slice(0,600));
@@ -510,7 +540,7 @@ function App(){
 
     // API 1: tiktok-scraper7 — 3 endpoints
     function tryScraperEndpoint(ep, next){
-      fetch("https://"+TIKTOK_HOST+ep+encodeURIComponent(cleanUrl),{method:"GET",headers:hdr(TIKTOK_HOST)})
+      rapidFetch(TIKTOK_HOST, ep+encodeURIComponent(cleanUrl))
         .then(function(r){return r.json();})
         .then(function(d){
           console.log("TikTok scraper7 ["+ep+"]:",JSON.stringify(d).slice(0,600));
@@ -524,10 +554,7 @@ function App(){
 
     // API 2: tiktok-download-without-watermark (backup)
     function tryAPI2(){
-      fetch("https://"+TIKTOK2_HOST+"/analysis?url="+encodeURIComponent(cleanUrl)+"&hd=1",{
-        method:"GET",
-        headers:hdr(TIKTOK2_HOST)
-      })
+      rapidFetch(TIKTOK2_HOST, "/analysis?url="+encodeURIComponent(cleanUrl)+"&hd=1")
       .then(function(r){return r.json();})
       .then(function(d){
         console.log("TikTok API2:",JSON.stringify(d).slice(0,600));
