@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MediaTool Pro — Para Criadores de Conteúdo</title>
-  <meta name="description" content="Plataforma online para criadores de conteúdo processar vídeos do YouTube, Instagram, TikTok e mais." />
+  <meta name="description" content="Baixe vídeos do YouTube, Instagram, TikTok e mais." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
@@ -18,38 +18,28 @@
     ::-webkit-scrollbar-thumb { background: #ffffff18; border-radius: 3px; }
     @keyframes floatUp {
       0%   { transform: translateY(0); opacity: 0; }
-      10%  { opacity: 1; }
-      90%  { opacity: 0.4; }
+      10%  { opacity: 1; } 90% { opacity: 0.4; }
       100% { transform: translateY(-110vh); opacity: 0; }
     }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(14px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes pulse { 0%,100%{opacity:.6} 50%{opacity:1} }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    @keyframes shimmer {
-      0%   { background-position: -200% center; }
-      100% { background-position:  200% center; }
-    }
-    .fade-in { animation: fadeIn 0.45s ease both; }
-    .pulse   { animation: pulse 1.6s ease infinite; }
-    .spin    { animation: spin 1s linear infinite; display:inline-block; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes pulse  { 0%,100%{opacity:.55} 50%{opacity:1} }
+    @keyframes spin   { to { transform: rotate(360deg); } }
+    @keyframes shimmer { 0%{background-position:-200% center} 100%{background-position:200% center} }
+    .fade-in { animation: fadeIn 0.4s ease both; }
+    .pulse   { animation: pulse 1.8s ease infinite; }
+    .spin    { animation: spin 0.9s linear infinite; display:inline-block; }
     .shimmer-text {
-      background: linear-gradient(90deg, #A855F7, #3B82F6, #10B981, #A855F7);
+      background: linear-gradient(90deg,#A855F7,#3B82F6,#10B981,#A855F7);
       background-size: 200% auto;
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
       animation: shimmer 3s linear infinite;
     }
-    .tool-card { transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease; }
-    .tool-card:hover { transform: translateY(-3px); }
-    .nav-btn { transition: all 0.2s; }
-    .nav-btn:hover { background: rgba(255,255,255,0.08) !important; color: #fff !important; }
-    .q-btn { transition: all 0.18s; }
-    .q-btn:hover { border-color: #A855F7 !important; color: #A855F7 !important; }
-    .dl-btn:hover { opacity: .88 !important; transform: translateY(-1px); }
-    .dl-btn { transition: opacity .2s, transform .15s; }
+    .card-hover { transition: transform .18s ease, box-shadow .18s ease; }
+    .card-hover:hover { transform: translateY(-2px); }
+    .btn-hover { transition: opacity .2s, transform .15s; }
+    .btn-hover:hover { opacity: .88 !important; transform: translateY(-1px); }
+    .tab-btn { transition: all .2s; }
+    .tab-btn:hover { background: rgba(255,255,255,0.08) !important; color:#fff !important; }
   </style>
 </head>
 <body>
@@ -58,31 +48,40 @@
 (function(){
 "use strict";
 
-/* ── CONFIG ────────────────────────────────────────────── */
-var RAPID_KEY  = "1623f6fb98msh19b3e84650717cep1184c1jsne8eb1c781e41";
-var RAPID_HOST = "youtube-mp36.p.rapidapi.com";
-/* ────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════
+   CONFIGURAÇÃO DAS APIs
+══════════════════════════════════════ */
+var RAPID_KEY = "1623f6fb98msh19b3e84650717cep1184c1jsne8eb1c781e41";
+
+// API 1: YouTube → MP3
+var YT_MP3_HOST = "youtube-mp36.p.rapidapi.com";
+
+// API 2: Instagram Downloader (uzapishop)
+var INSTA_HOST  = "instagram-downloader-download-instagram-videos-stories1.p.rapidapi.com";
+/* ══════════════════════════════════════ */
 
 var e        = React.createElement;
 var useState = React.useState;
 var useEffect= React.useEffect;
 var useRef   = React.useRef;
-var Fragment = React.Fragment;
+var Frag     = React.Fragment;
 
 var PLATFORMS = [
-  { name:"YouTube",   icon:"\u25BA", color:"#FF0000", re:/youtube\.com|youtu\.be/ },
-  { name:"Instagram", icon:"\u25C8", color:"#E1306C", re:/instagram\.com/ },
-  { name:"TikTok",    icon:"\u266A", color:"#69C9D0", re:/tiktok\.com/ },
-  { name:"Facebook",  icon:"\u0192", color:"#1877F2", re:/facebook\.com|fb\.watch/ },
-  { name:"Twitter/X", icon:"\u2715", color:"#1DA1F2", re:/twitter\.com|x\.com/ },
-  { name:"Vimeo",     icon:"\u2B21", color:"#1AB7EA", re:/vimeo\.com/ },
+  { name:"YouTube",   icon:"▶", color:"#FF0000", re:/youtube\.com|youtu\.be/ },
+  { name:"Instagram", icon:"◈", color:"#E1306C", re:/instagram\.com/ },
+  { name:"TikTok",    icon:"♪", color:"#69C9D0", re:/tiktok\.com/ },
+  { name:"Facebook",  icon:"ƒ", color:"#1877F2", re:/facebook\.com|fb\.watch/ },
+  { name:"Twitter/X", icon:"✕", color:"#1DA1F2", re:/twitter\.com|x\.com/ },
+  { name:"Vimeo",     icon:"⬡", color:"#1AB7EA", re:/vimeo\.com/ },
 ];
 
 var PARTICLES = (function(){
   var a=[];
-  for(var i=0;i<20;i++) a.push({id:i,x:Math.random()*98+1,y:Math.random()*90+5,
-    size:Math.random()*3+1,speed:Math.random()*22+14,
-    op:Math.random()*0.22+0.04,delay:-(Math.random()*30)});
+  for(var i=0;i<18;i++) a.push({
+    id:i, x:Math.random()*98+1, y:Math.random()*90+5,
+    size:Math.random()*3+1, speed:Math.random()*20+14,
+    op:Math.random()*0.2+0.04, delay:-(Math.random()*28)
+  });
   return a;
 })();
 
@@ -90,19 +89,17 @@ function detectPlatform(url){
   for(var i=0;i<PLATFORMS.length;i++) if(PLATFORMS[i].re.test(url)) return PLATFORMS[i];
   return null;
 }
-
-function extractVideoId(url){
-  var m = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-  return m ? m[1] : null;
+function extractYTId(url){
+  var m=url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  return m?m[1]:null;
 }
-
 function glass(extra){
   return Object.assign({
     background:"rgba(255,255,255,0.04)",
     backdropFilter:"blur(20px)",
     border:"1px solid rgba(255,255,255,0.08)",
-    borderRadius:16,
-  }, extra||{});
+    borderRadius:16
+  },extra||{});
 }
 
 /* ── Particles ── */
@@ -113,409 +110,461 @@ function Particles(){
         position:"absolute",left:p.x+"%",top:p.y+"%",
         width:p.size,height:p.size,borderRadius:"50%",
         background:"#A855F7",opacity:p.op,
-        animation:"floatUp "+p.speed+"s linear "+p.delay+"s infinite",
+        animation:"floatUp "+p.speed+"s linear "+p.delay+"s infinite"
       }});
     })
   );
 }
 
-/* ── Status Banner ── */
-function Banner(props){
+/* ── Alert Banner ── */
+function Alert(props){
   if(!props.msg) return null;
-  var colors = {
-    loading: { bg:"rgba(59,130,246,0.1)", border:"rgba(59,130,246,0.3)", text:"#3B82F6" },
-    success: { bg:"rgba(16,185,129,0.1)", border:"rgba(16,185,129,0.3)", text:"#10B981" },
-    error:   { bg:"rgba(239,68,68,0.1)",  border:"rgba(239,68,68,0.3)",  text:"#EF4444" },
-    warn:    { bg:"rgba(245,158,11,0.1)", border:"rgba(245,158,11,0.3)", text:"#F59E0B" },
-  };
-  var c = colors[props.type] || colors.loading;
+  var clr={
+    loading:{bg:"rgba(59,130,246,.1)",  bd:"rgba(59,130,246,.3)",  tx:"#60A5FA"},
+    success:{bg:"rgba(16,185,129,.1)",  bd:"rgba(16,185,129,.3)",  tx:"#10B981"},
+    error:  {bg:"rgba(239,68,68,.1)",   bd:"rgba(239,68,68,.3)",   tx:"#F87171"},
+    warn:   {bg:"rgba(245,158,11,.1)",  bd:"rgba(245,158,11,.3)",  tx:"#FBB724"},
+  }[props.type]||{bg:"rgba(59,130,246,.1)",bd:"rgba(59,130,246,.3)",tx:"#60A5FA"};
   return e("div",{className:"fade-in",style:{
-    background:c.bg, border:"1px solid "+c.border, borderRadius:12,
-    padding:"12px 16px", marginBottom:16,
-    display:"flex", alignItems:"center", gap:10,
-    fontSize:13, color:c.text,
+    background:clr.bg,border:"1px solid "+clr.bd,borderRadius:12,
+    padding:"12px 16px",marginBottom:16,
+    display:"flex",alignItems:"center",gap:10,fontSize:13,color:clr.tx
   }},
     props.type==="loading" && e("span",{className:"spin"},"⟳"),
-    e("span",null, props.msg)
+    props.type==="success" && e("span",null,"✓"),
+    props.type==="error"   && e("span",null,"⚠"),
+    props.type==="warn"    && e("span",null,"💡"),
+    e("span",null,props.msg)
   );
 }
 
-/* ── Download Result Card ── */
-function DownloadCard(props){
-  var r = props.result;
-  if(!r) return null;
+/* ── Download Link Card ── */
+function ResultCard(props){
+  var items = props.items; // [{label, url, quality}]
+  if(!items||!items.length) return null;
   return e("div",{className:"fade-in",style:{
     background:"rgba(16,185,129,0.07)",
-    border:"1px solid rgba(16,185,129,0.25)",
-    borderRadius:16,padding:28,textAlign:"center",marginBottom:20,
+    border:"1px solid rgba(16,185,129,0.28)",
+    borderRadius:16,padding:24,marginBottom:20
   }},
-    e("div",{style:{width:52,height:52,borderRadius:"50%",
-      background:"rgba(16,185,129,0.15)",border:"2px solid #10B981",
-      display:"flex",alignItems:"center",justifyContent:"center",
-      fontSize:22,color:"#10B981",margin:"0 auto 14px"}},"\u2713"),
-    e("div",{style:{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:18,color:"#fff",marginBottom:4}},
-      r.title || "Áudio pronto!"),
-    e("div",{style:{fontSize:12,color:"#ffffff55",marginBottom:20}},
-      "MP3 \u00b7 Alta qualidade \u00b7 YouTube"),
-    e("div",{style:{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}},
-      e("a",{
-        href: r.link,
-        target:"_blank",
-        rel:"noopener noreferrer",
-        className:"dl-btn",
-        style:{
-          display:"inline-flex",alignItems:"center",gap:8,
-          background:"linear-gradient(135deg,#10B981,#059669)",
-          border:"none",borderRadius:10,color:"#fff",
-          padding:"12px 28px",fontSize:14,textDecoration:"none",
-          fontFamily:"'Syne',sans-serif",fontWeight:700,cursor:"pointer",
-        }
-      },"\u2B07 Baixar MP3"),
-      e("button",{onClick:props.onReset,style:{
-        background:"rgba(255,255,255,0.05)",
-        border:"1px solid rgba(255,255,255,0.1)",
-        borderRadius:10,color:"#ffffff88",
-        padding:"12px 22px",fontSize:14,
-        cursor:"pointer",fontFamily:"'DM Sans',sans-serif",
-      }},"+ Novo download")
-    )
+    e("div",{style:{display:"flex",alignItems:"center",gap:12,marginBottom:18}},
+      e("div",{style:{width:44,height:44,borderRadius:"50%",
+        background:"rgba(16,185,129,0.15)",border:"2px solid #10B981",
+        display:"flex",alignItems:"center",justifyContent:"center",
+        fontSize:18,color:"#10B981",flexShrink:0}},"✓"),
+      e("div",null,
+        e("div",{style:{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:16,color:"#fff"}},"Pronto para baixar!"),
+        e("div",{style:{fontSize:12,color:"#ffffff55",marginTop:2}},props.subtitle||"Clique no botão abaixo")
+      )
+    ),
+    e("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+      items.map(function(item,i){
+        return e("a",{
+          key:i,
+          href:item.url,
+          target:"_blank",
+          rel:"noopener noreferrer",
+          className:"btn-hover",
+          style:{
+            display:"flex",alignItems:"center",justifyContent:"space-between",
+            background:"linear-gradient(135deg,#10B981,#059669)",
+            borderRadius:10,color:"#fff",padding:"13px 18px",
+            textDecoration:"none",fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14
+          }
+        },
+          e("span",null,"⬇ "+item.label),
+          item.quality && e("span",{style:{
+            background:"rgba(255,255,255,0.2)",borderRadius:6,
+            padding:"2px 8px",fontSize:11,fontWeight:600
+          }},item.quality)
+        );
+      })
+    ),
+    e("button",{onClick:props.onReset,style:{
+      marginTop:12,width:"100%",background:"rgba(255,255,255,0.04)",
+      border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,
+      color:"#ffffff66",padding:"11px",fontSize:13,cursor:"pointer",
+      fontFamily:"'DM Sans',sans-serif"
+    }},"+ Novo download")
   );
 }
 
-/* ── Main App ── */
+/* ══ MAIN APP ══ */
 function App(){
-  var _url   = useState(""); var url=_url[0]; var setUrl=_url[1];
-  var _plat  = useState(null); var plat=_plat[0]; var setPlat=_plat[1];
-  var _tab   = useState("tool"); var tab=_tab[0]; var setTab=_tab[1];
-  var _phase = useState("idle"); var phase=_phase[0]; var setPhase=_phase[1];
-  /* phase: idle | ready | loading | done | error */
-  var _res   = useState(null); var result=_res[0]; var setResult=_res[1];
-  var _msg   = useState(null); var msg=_msg[0]; var setMsg=_msg[1];
-  var _mtype = useState("loading"); var mtype=_mtype[0]; var setMtype=_mtype[1];
-  var _thumb = useState(null); var thumb=_thumb[0]; var setThumb=_thumb[1];
-  var _vtitle= useState(""); var vtitle=_vtitle[0]; var setVtitle=_vtitle[1];
+  var _url   = useState(""); var url=_url[0],setUrl=_url[1];
+  var _plat  = useState(null); var plat=_plat[0],setPlat=_plat[1];
+  var _phase = useState("idle"); var phase=_phase[0],setPhase=_phase[1];
+  var _msg   = useState(null); var msg=_msg[0],setMsg=_msg[1];
+  var _mtype = useState("loading"); var mtype=_mtype[0],setMtype=_mtype[1];
+  var _items = useState(null); var items=_items[0],setItems=_items[1];
+  var _thumb = useState(null); var thumb=_thumb[0],setThumb=_thumb[1];
+  var _sub   = useState(""); var sub=_sub[0],setSub=_sub[1];
+  var _mode  = useState("video"); var mode=_mode[0],setMode=_mode[1]; // video | mp3
 
   useEffect(function(){
-    var p = detectPlatform(url);
+    var p=detectPlatform(url);
     setPlat(p);
-    if(url && p){
+    setItems(null); setMsg(null);
+    if(url&&p){
       setPhase("ready");
-      // Try to load YouTube thumbnail
-      var vid = extractVideoId(url);
-      if(vid){
-        setThumb("https://img.youtube.com/vi/"+vid+"/hqdefault.jpg");
-      } else {
-        setThumb("https://picsum.photos/seed/"+encodeURIComponent(url)+"/640/360");
-      }
+      var vid=extractYTId(url);
+      setThumb(vid
+        ?"https://img.youtube.com/vi/"+vid+"/hqdefault.jpg"
+        :"https://picsum.photos/seed/"+encodeURIComponent(url.slice(-20))+"/640/360");
     } else {
-      setPhase("idle");
-      setThumb(null);
-      setVtitle("");
+      setPhase("idle"); setThumb(null);
     }
-    setResult(null);
-    setMsg(null);
   },[url]);
 
-  function reset(){
-    setUrl(""); setPlat(null); setPhase("idle");
-    setResult(null); setMsg(null); setThumb(null); setVtitle("");
+  function setError(m){ setPhase("error"); setMtype("error"); setMsg(m); }
+  function setLoading(m){ setPhase("loading"); setMtype("loading"); setMsg(m||"Processando..."); setItems(null); }
+
+  /* ── YouTube MP3 ── */
+  function doYouTubeMP3(){
+    var vid=extractYTId(url);
+    if(!vid){ setError("Não consegui extrair o ID do vídeo. Verifique o link."); return; }
+    setLoading("Convertendo para MP3... isso pode levar alguns segundos ⏳");
+
+    function tryFetch(cb){
+      fetch("https://"+YT_MP3_HOST+"/dl?id="+encodeURIComponent(vid),{
+        method:"GET",
+        headers:{"x-rapidapi-host":YT_MP3_HOST,"x-rapidapi-key":RAPID_KEY}
+      }).then(function(r){return r.json();}).then(cb)
+       .catch(function(){ setError("Erro de rede. Verifique sua conexão."); });
+    }
+
+    tryFetch(function(data){
+      if(data&&data.status==="ok"&&data.link){
+        setPhase("done"); setMsg(null);
+        setItems([{label:"Baixar MP3",url:data.link,quality:"320kbps"}]);
+        setSub((data.title||"Áudio")+" · MP3 · YouTube");
+      } else if(data&&data.status==="processing"){
+        setMsg("Servidor processando, aguarde... ⏳");
+        setTimeout(function(){
+          tryFetch(function(d2){
+            if(d2&&d2.status==="ok"&&d2.link){
+              setPhase("done"); setMsg(null);
+              setItems([{label:"Baixar MP3",url:d2.link,quality:"320kbps"}]);
+              setSub((d2.title||"Áudio")+" · MP3");
+            } else {
+              setError("Ainda processando. Tente novamente em instantes.");
+            }
+          });
+        },4000);
+      } else {
+        setError("Erro da API: "+(data&&(data.msg||data.message)||"Resposta inesperada."));
+      }
+    });
   }
 
-  function handleDownloadMP3(){
-    if(!url || !plat) return;
-
-    // Only YouTube supported by this API
-    if(plat.name !== "YouTube"){
-      setMtype("warn");
-      setMsg("Esta API suporta apenas YouTube. Para outras redes, um backend próprio é necessário.");
-      return;
-    }
-
-    var vid = extractVideoId(url);
-    if(!vid){
-      setMtype("error");
-      setMsg("Não foi possível extrair o ID do vídeo. Verifique o link.");
-      return;
-    }
-
-    setPhase("loading");
-    setMsg("Conectando ao servidor e processando o áudio...");
-    setMtype("loading");
-    setResult(null);
-
-    fetch("https://"+RAPID_HOST+"/dl?id="+encodeURIComponent(vid), {
-      method: "GET",
-      headers: {
-        "x-rapidapi-host": RAPID_HOST,
-        "x-rapidapi-key":  RAPID_KEY,
+  /* ── Instagram Downloader ── */
+  function doInstagram(){
+    setLoading("Buscando mídia do Instagram... 📸");
+    fetch("https://"+INSTA_HOST+"/index?url="+encodeURIComponent(url),{
+      method:"GET",
+      headers:{
+        "x-rapidapi-host":INSTA_HOST,
+        "x-rapidapi-key":RAPID_KEY
       }
     })
     .then(function(r){ return r.json(); })
     .then(function(data){
-      if(data && data.status === "ok" && data.link){
-        setPhase("done");
-        setMsg(null);
-        setResult({ link: data.link, title: data.title || vtitle || "Áudio" });
-      } else if(data && data.status === "processing"){
-        // API sometimes returns processing — poll once more after 3s
-        setMsg("Processando... aguarde alguns segundos \u23F3");
-        setTimeout(function(){
-          fetch("https://"+RAPID_HOST+"/dl?id="+encodeURIComponent(vid), {
-            method:"GET",
-            headers:{
-              "x-rapidapi-host":RAPID_HOST,
-              "x-rapidapi-key":RAPID_KEY,
-            }
-          })
-          .then(function(r){ return r.json(); })
-          .then(function(data2){
-            if(data2 && data2.status==="ok" && data2.link){
-              setPhase("done");
-              setMsg(null);
-              setResult({ link:data2.link, title:data2.title||"Áudio" });
-            } else {
-              setPhase("error");
-              setMtype("error");
-              setMsg("Servidor ainda processando. Tente novamente em alguns segundos.");
-            }
-          })
-          .catch(function(){ setPhase("error"); setMtype("error"); setMsg("Erro de rede. Tente novamente."); });
-        }, 3500);
+      // API returns array or object with media URLs
+      var links=[];
+
+      // Handle various response shapes
+      if(Array.isArray(data)){
+        data.forEach(function(item,i){
+          var u=item.url||item.video_url||item.download_url||item.src;
+          if(u) links.push({label:"Baixar Mídia "+(i+1),url:u,quality:item.type||"HD"});
+        });
+      } else if(data&&data.result){
+        var r=data.result;
+        if(Array.isArray(r)){
+          r.forEach(function(item,i){
+            var u=item.url||item.video_url||item.download_url;
+            if(u) links.push({label:"Baixar Mídia "+(i+1),url:u,quality:"HD"});
+          });
+        } else if(r.url){
+          links.push({label:"Baixar Vídeo",url:r.url,quality:"HD"});
+        }
+      } else if(data&&(data.url||data.video_url||data.download_url)){
+        links.push({label:"Baixar Vídeo",url:data.url||data.video_url||data.download_url,quality:"HD"});
+      } else if(data&&data.media){
+        var m=data.media;
+        (Array.isArray(m)?m:[m]).forEach(function(item,i){
+          var u=item.url||item.video_url;
+          if(u) links.push({label:"Baixar Mídia "+(i+1),url:u,quality:"HD"});
+        });
+      }
+
+      if(links.length>0){
+        setPhase("done"); setMsg(null);
+        setItems(links);
+        setSub("Instagram · "+links.length+" arquivo(s)");
       } else {
-        setPhase("error");
-        setMtype("error");
-        setMsg("Erro: " + (data.msg || data.message || "Resposta inesperada da API."));
+        // Show raw response hint
+        console.log("Instagram API response:", JSON.stringify(data));
+        setError("Não encontrei links de download. Verifique se o post é público. Resposta salva no console (F12).");
       }
     })
     .catch(function(err){
-      setPhase("error");
-      setMtype("error");
-      setMsg("Falha na conexão com a API. Verifique sua internet ou a validade da chave.");
       console.error(err);
+      setError("Erro de conexão com a API do Instagram.");
     });
   }
 
-  function handleGetThumbnail(){
-    if(!url || !plat) return;
-    var vid = extractVideoId(url);
-    if(!vid){ setMtype("warn"); setMsg("Link inválido para thumbnail."); return; }
-    var thumbUrl = "https://img.youtube.com/vi/"+vid+"/maxresdefault.jpg";
-    // Open in new tab so user can save
-    window.open(thumbUrl, "_blank");
-    setMtype("success");
-    setMsg("Thumbnail aberta em nova aba! Clique com botão direito → Salvar imagem.");
+  /* ── TikTok / outros — orientação ── */
+  function doUnsupported(){
+    setMtype("warn");
+    setMsg("Esta plataforma ainda não está integrada. Funciona com YouTube (MP3) e Instagram (vídeo/foto) nesta versão.");
+    setPhase("ready");
   }
 
-  /* ── Render ── */
+  /* ── Main download handler ── */
+  function handleDownload(){
+    if(!url||!plat) return;
+    if(plat.name==="YouTube"){
+      if(mode==="mp3") doYouTubeMP3();
+      else {
+        setMtype("warn");
+        setMsg("Para YouTube MP4, assine a API 'YouTube Video Downloader' no RapidAPI e me mande o link. Por enquanto use MP3! 🎵");
+        setPhase("ready");
+      }
+    } else if(plat.name==="Instagram"){
+      doInstagram();
+    } else {
+      doUnsupported();
+    }
+  }
+
+  /* ── Thumbnail ── */
+  function handleThumb(){
+    var vid=extractYTId(url);
+    if(vid){
+      window.open("https://img.youtube.com/vi/"+vid+"/maxresdefault.jpg","_blank");
+      setMtype("success"); setMsg("Thumbnail aberta! Clique com botão direito → Salvar imagem.");
+    } else {
+      setMtype("warn"); setMsg("Thumbnail disponível apenas para YouTube.");
+    }
+  }
+
+  var isYT    = plat&&plat.name==="YouTube";
+  var isInsta = plat&&plat.name==="Instagram";
+  var canProc = phase==="ready"||phase==="error";
+
+  /* ══ RENDER ══ */
   return e("div",{style:{minHeight:"100vh",background:"#060612",position:"relative",overflowX:"hidden"}},
 
-    /* BG */
     e("div",{style:{position:"fixed",inset:0,zIndex:0,pointerEvents:"none",
-      background:"radial-gradient(ellipse 80% 60% at 20% 10%,#1a0a3a 0%,transparent 60%),radial-gradient(ellipse 60% 50% at 80% 80%,#0a1a2e 0%,transparent 60%)"}}),
+      background:"radial-gradient(ellipse 80% 60% at 15% 10%,#1a0a3a,transparent 60%),radial-gradient(ellipse 60% 50% at 85% 85%,#0a1a2e,transparent 60%)"}}),
     e("div",{style:{position:"fixed",inset:0,zIndex:0,pointerEvents:"none",
-      backgroundImage:"linear-gradient(rgba(168,85,247,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(168,85,247,0.04) 1px,transparent 1px)",
+      backgroundImage:"linear-gradient(rgba(168,85,247,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(168,85,247,.04) 1px,transparent 1px)",
       backgroundSize:"48px 48px"}}),
     e(Particles),
 
-    /* Container */
-    e("div",{style:{position:"relative",zIndex:1,maxWidth:860,margin:"0 auto",padding:"0 20px 56px"}},
+    e("div",{style:{position:"relative",zIndex:1,maxWidth:820,margin:"0 auto",padding:"0 20px 56px"}},
 
-      /* Header */
+      /* ── Header ── */
       e("header",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",
-        padding:"28px 0 18px",flexWrap:"wrap",gap:14}},
+        padding:"26px 0 16px",flexWrap:"wrap",gap:12}},
         e("div",{style:{display:"flex",alignItems:"center",gap:12}},
-          e("span",{style:{fontSize:28,color:"#A855F7",lineHeight:1}},"\u2B21"),
+          e("span",{style:{fontSize:26,color:"#A855F7"}},"⬡"),
           e("div",null,
-            e("div",{style:{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:20,color:"#fff"}},
+            e("div",{style:{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:19,color:"#fff"}},
               "MediaTool ",
               e("span",{style:{background:"linear-gradient(90deg,#A855F7,#3B82F6)",
-                WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}},"Pro")
-            ),
-            e("div",{style:{fontSize:11,color:"#ffffff44",marginTop:2}},"Para criadores de conte\u00fado")
+                WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}},"Pro")),
+            e("div",{style:{fontSize:10,color:"#ffffff44",marginTop:1}},"Para criadores de conteúdo")
           )
         ),
-        e("nav",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
-          [["tool","\uD83D\uDD27 Ferramenta"],["info","\u2139\uFE0F Sobre"]].map(function(row){
-            var t=row[0]; var label=row[1]; var active=tab===t;
-            return e("button",{key:t,className:"nav-btn",onClick:function(){setTab(t);},style:{
-              background:active?"rgba(255,255,255,0.08)":"transparent",
-              border:"1px solid "+(active?"rgba(168,85,247,0.4)":"rgba(255,255,255,0.1)"),
-              borderRadius:8,color:active?"#fff":"#ffffff66",
-              padding:"7px 14px",fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",
-            }},label);
-          })
+        e("div",{style:{display:"flex",gap:8}},
+          e("div",{style:{
+            background:"rgba(16,185,129,0.1)",border:"1px solid rgba(16,185,129,0.25)",
+            borderRadius:20,padding:"4px 12px",fontSize:11,color:"#10B981"
+          }},"● API Online")
         )
       ),
 
-      /* ══ TAB FERRAMENTA ══ */
-      tab==="tool" && e(Fragment,null,
+      /* ── Hero ── */
+      e("div",{className:"fade-in",style:{textAlign:"center",padding:"24px 0 22px"}},
+        e("div",{style:{display:"inline-flex",alignItems:"center",gap:8,
+          background:"rgba(168,85,247,0.1)",border:"1px solid rgba(168,85,247,0.25)",
+          borderRadius:20,padding:"5px 14px",fontSize:12,color:"#A855F7",marginBottom:14}},
+          "🚀 YouTube MP3  ·  Instagram  ·  Mais em breve"),
+        e("h1",{style:{fontFamily:"'Syne',sans-serif",fontSize:"clamp(26px,5.5vw,46px)",
+          fontWeight:800,lineHeight:1.12,color:"#fff",marginBottom:10}},
+          "Baixe vídeos e áudios",e("br"),
+          e("span",{className:"shimmer-text"},"de qualquer rede social")),
+        e("p",{style:{fontSize:13,color:"#ffffff44"}},
+          "Cole o link abaixo e clique em baixar. Simples assim.")
+      ),
 
-        /* Hero */
-        e("div",{className:"fade-in",style:{textAlign:"center",padding:"28px 0 24px"}},
-          e("div",{style:{display:"inline-block",background:"rgba(168,85,247,0.1)",
-            border:"1px solid rgba(168,85,247,0.3)",borderRadius:20,
-            padding:"5px 14px",fontSize:12,color:"#A855F7",marginBottom:16}},
-            "\uD83D\uDE80 Powered by RapidAPI \u2022 YouTube MP3"),
-          e("h1",{style:{fontFamily:"'Syne',sans-serif",fontSize:"clamp(28px,6vw,48px)",
-            fontWeight:800,lineHeight:1.1,color:"#fff",marginBottom:12}},
-            "Baixe qualquer v\u00eddeo",e("br"),
-            e("span",{className:"shimmer-text"},"do YouTube como MP3")),
-          e("p",{style:{fontSize:14,color:"#ffffff55"}},
-            "Cole o link \u2192 Clique em baixar \u2192 Pronto! Completamente gr\u00e1tis.")
+      /* ── URL Input ── */
+      e("div",{className:"fade-in",style:glass({padding:18,marginBottom:14})},
+        e("div",{style:{display:"flex",alignItems:"center",gap:12,
+          background:"rgba(0,0,0,0.32)",border:"1px solid rgba(255,255,255,0.09)",
+          borderRadius:12,padding:"4px 8px 4px 16px"}},
+          e("span",{style:{fontSize:17,flexShrink:0}},
+            plat?e("span",{style:{color:plat.color,fontWeight:700}},plat.icon):"🔗"),
+          e("input",{
+            type:"url",
+            placeholder:"Cole o link aqui... (YouTube, Instagram, TikTok...)",
+            value:url,
+            onChange:function(ev){setUrl(ev.target.value);},
+            style:{flex:1,background:"transparent",border:"none",outline:"none",
+              color:"#fff",fontSize:14,padding:"12px 0",fontFamily:"'DM Sans',sans-serif"}
+          }),
+          url&&e("button",{onClick:function(){setUrl("");setPlat(null);setPhase("idle");setItems(null);setMsg(null);setThumb(null);},
+            style:{background:"rgba(255,255,255,0.08)",border:"none",borderRadius:7,
+              color:"#ffffff55",width:26,height:26,cursor:"pointer",fontSize:11,flexShrink:0}},"✕")
         ),
+        plat&&e("div",{style:{display:"flex",alignItems:"center",gap:6,marginTop:9,fontSize:12,
+          color:(isYT||isInsta)?"#10B981":"#F59E0B"}},
+          e("span",{style:{width:7,height:7,borderRadius:"50%",background:plat.color,display:"inline-block"}}),
+          isYT   ?"YouTube detectado — MP3 disponível ✓":
+          isInsta?"Instagram detectado — download de vídeo/foto disponível ✓":
+                  plat.name+" detectado — suporte em breve"
+        )
+      ),
 
-        /* URL Input */
-        e("div",{className:"fade-in",style:glass({padding:20,marginBottom:16})},
-          e("div",{style:{display:"flex",alignItems:"center",gap:12,
-            background:"rgba(0,0,0,0.3)",border:"1px solid rgba(255,255,255,0.1)",
-            borderRadius:12,padding:"4px 8px 4px 16px"}},
-            e("span",{style:{fontSize:18,flexShrink:0}},
-              plat ? e("span",{style:{color:plat.color,fontWeight:700}},plat.icon) : "\uD83D\uDD17"),
-            e("input",{
-              type:"url",
-              placeholder:"Cole o link do YouTube aqui... ex: https://youtube.com/watch?v=...",
-              value:url,
-              onChange:function(ev){setUrl(ev.target.value);},
-              style:{flex:1,background:"transparent",border:"none",outline:"none",
-                color:"#fff",fontSize:14,padding:"13px 0",fontFamily:"'DM Sans',sans-serif"}
-            }),
-            url && e("button",{onClick:reset,style:{
-              background:"rgba(255,255,255,0.08)",border:"none",borderRadius:8,
-              color:"#ffffff66",width:28,height:28,cursor:"pointer",fontSize:12,flexShrink:0
-            }},"\u2715")
-          ),
-          plat && e("div",{style:{display:"flex",alignItems:"center",gap:6,marginTop:10,fontSize:12,
-            color: plat.name==="YouTube" ? "#10B981" : "#F59E0B"}},
-            e("span",{style:{width:8,height:8,borderRadius:"50%",background:plat.color,display:"inline-block"}}),
-            plat.name==="YouTube"
-              ? "YouTube detectado \u2014 pronto para processar!"
-              : plat.name+" detectado \u2014 apenas YouTube suportado nesta vers\u00e3o"
-          )
-        ),
+      /* ── Mode selector (only YouTube) ── */
+      isYT && canProc && e("div",{className:"fade-in",style:{display:"flex",gap:8,marginBottom:14}},
+        ["mp3","video"].map(function(m){
+          var active=mode===m;
+          return e("button",{key:m,onClick:function(){setMode(m);},style:{
+            flex:1,padding:"10px",border:"1px solid "+(active?"#A855F7":"rgba(255,255,255,0.1)"),
+            borderRadius:10,background:active?"rgba(168,85,247,0.12)":"rgba(255,255,255,0.03)",
+            color:active?"#A855F7":"#ffffff55",fontSize:13,cursor:"pointer",
+            fontFamily:"'Syne',sans-serif",fontWeight:active?700:400,
+          }},m==="mp3"?"🎵 MP3 (áudio)":"🎬 MP4 (vídeo)");
+        })
+      ),
 
-        /* Preview */
-        (phase==="ready"||phase==="loading"||phase==="done"||phase==="error") && thumb && e("div",{className:"fade-in",style:glass({
-          overflow:"hidden",display:"flex",flexWrap:"wrap",marginBottom:16})},
-          e("div",{style:{position:"relative",flexShrink:0,width:220,minWidth:160}},
-            e("img",{src:thumb,alt:"Thumbnail",
-              onError:function(ev){ev.target.src="https://picsum.photos/seed/video/640/360";},
-              style:{width:"100%",height:124,objectFit:"cover",display:"block"}}),
+      /* ── Thumbnail preview ── */
+      (canProc||phase==="loading"||phase==="done") && thumb &&
+        e("div",{className:"fade-in",style:glass({overflow:"hidden",display:"flex",flexWrap:"wrap",marginBottom:14})},
+          e("div",{style:{position:"relative",flexShrink:0,width:200,minWidth:140}},
+            e("img",{src:thumb,alt:"thumb",
+              onError:function(ev){ev.target.style.display="none";},
+              style:{width:"100%",height:116,objectFit:"cover",display:"block"}}),
             e("div",{style:{position:"absolute",inset:0,display:"flex",alignItems:"center",
-              justifyContent:"center",background:"rgba(0,0,0,0.35)",fontSize:26,color:"#fff"}},"\u25B6")
+              justifyContent:"center",background:"rgba(0,0,0,0.3)",fontSize:24,color:"#fff"}},
+              plat&&plat.icon)
           ),
-          e("div",{style:{padding:18,display:"flex",flexDirection:"column",gap:6,justifyContent:"center",flex:1,minWidth:180}},
-            e("div",{style:{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14,color:"#fff",
-              lineHeight:1.3}},vtitle||"V\u00eddeo do YouTube"),
-            e("div",{style:{fontSize:12,color:"#ffffff55"}},
-              e("span",{style:{color:plat&&plat.color}},plat&&(plat.icon+" "+plat.name)),
-              " \u00b7 \u00c1udio MP3 dispon\u00edvel"
+          e("div",{style:{padding:16,display:"flex",flexDirection:"column",gap:6,justifyContent:"center",flex:1}},
+            e("div",{style:{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:13,color:"#fff"}},
+              isYT?"Vídeo do YouTube":isInsta?"Publicação do Instagram":"Mídia detectada"),
+            e("div",{style:{fontSize:11,color:"#ffffff44"}},
+              e("span",{style:{color:plat&&plat.color}},plat&&plat.name),
+              isYT?" · MP3 disponível":isInsta?" · Vídeo/Foto disponível":""),
+            isYT && e("div",{style:{display:"flex",gap:5,marginTop:4}},
+              ["✓ MP3 320kbps","✓ Thumbnail HD"].map(function(t){
+                return e("span",{key:t,style:{background:"rgba(16,185,129,0.1)",
+                  border:"1px solid rgba(16,185,129,0.25)",color:"#10B981",
+                  borderRadius:5,padding:"2px 7px",fontSize:10}},t);
+              })
             ),
-            e("div",{style:{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}},
-              ["\u2713 MP3 at\u00e9 320kbps","\u2713 Thumbnail HD"].map(function(t){
-                return e("span",{key:t,style:{background:"rgba(16,185,129,0.12)",
-                  border:"1px solid rgba(16,185,129,0.3)",color:"#10B981",
-                  borderRadius:6,padding:"2px 8px",fontSize:10}},t);
+            isInsta && e("div",{style:{display:"flex",gap:5,marginTop:4}},
+              ["✓ Foto","✓ Vídeo","✓ Reels"].map(function(t){
+                return e("span",{key:t,style:{background:"rgba(225,48,108,0.1)",
+                  border:"1px solid rgba(225,48,108,0.25)",color:"#E1306C",
+                  borderRadius:5,padding:"2px 7px",fontSize:10}},t);
               })
             )
           )
         ),
 
-        /* Status banner */
-        (msg && phase!=="done") && e(Banner,{msg:msg,type:mtype}),
+      /* ── Alert ── */
+      msg && phase!=="done" && e(Alert,{msg:msg,type:mtype}),
 
-        /* Action Buttons */
-        (phase==="ready"||phase==="error") && e("div",{className:"fade-in",style:{display:"flex",flexDirection:"column",gap:10,marginBottom:24}},
+      /* ── Buttons ── */
+      canProc && e("div",{className:"fade-in",style:{display:"flex",flexDirection:"column",gap:9,marginBottom:20}},
 
-          /* MP3 Download */
-          e("button",{
-            onClick:handleDownloadMP3,
-            disabled: !url || !plat,
-            style:{
-              width:"100%",padding:"17px 24px",border:"none",borderRadius:14,
-              color:"#fff",fontSize:15,fontFamily:"'Syne',sans-serif",fontWeight:700,
-              cursor:(url&&plat)?"pointer":"not-allowed",
-              display:"flex",alignItems:"center",justifyContent:"center",gap:10,
-              background:"linear-gradient(135deg,#A855F7,#6D28D9)",
-              opacity:(url&&plat)?1:0.45,
-              boxShadow:"0 8px 32px rgba(168,85,247,0.3)",
-            }
-          },
-            e("span",{style:{fontSize:20}},"\uD83C\uDFB5"),
-            "Baixar como MP3",
-            e("span",{style:{marginLeft:"auto",fontSize:18}},"\u2192")
-          ),
-
-          /* Thumbnail */
-          plat && plat.name==="YouTube" && e("button",{
-            onClick:handleGetThumbnail,
-            style:{
-              width:"100%",padding:"14px 24px",border:"1px solid rgba(245,158,11,0.3)",
-              borderRadius:14,color:"#F59E0B",fontSize:14,
-              fontFamily:"'Syne',sans-serif",fontWeight:600,
-              cursor:"pointer",
-              display:"flex",alignItems:"center",justifyContent:"center",gap:10,
-              background:"rgba(245,158,11,0.06)",
-            }
-          },
-            e("span",{style:{fontSize:18}},"\uD83D\uDDBC\uFE0F"),
-            "Abrir Thumbnail HD"
-          )
+        /* Main download button */
+        e("button",{
+          onClick:handleDownload,
+          disabled:!url||!plat,
+          className:"btn-hover",
+          style:{
+            width:"100%",padding:"16px 24px",border:"none",borderRadius:13,
+            color:"#fff",fontSize:15,fontFamily:"'Syne',sans-serif",fontWeight:700,
+            cursor:(url&&plat)?"pointer":"not-allowed",
+            display:"flex",alignItems:"center",justifyContent:"center",gap:10,
+            background: isInsta
+              ?"linear-gradient(135deg,#E1306C,#833AB4)"
+              :"linear-gradient(135deg,#A855F7,#6D28D9)",
+            opacity:(url&&plat)?1:0.42,
+            boxShadow:(url&&plat)
+              ?(isInsta?"0 8px 28px rgba(225,48,108,0.3)":"0 8px 28px rgba(168,85,247,0.3)")
+              :"none"
+          }
+        },
+          e("span",{style:{fontSize:19}},isInsta?"📥":"🎵"),
+          isInsta?"Baixar do Instagram":
+          mode==="mp3"?"Baixar como MP3":"Baixar como MP4",
+          e("span",{style:{marginLeft:"auto"}},"\u2192")
         ),
 
-        /* Loading state */
-        phase==="loading" && e("div",{className:"fade-in",style:glass({padding:28,marginBottom:20,textAlign:"center"})},
-          e("div",{className:"spin",style:{fontSize:36,display:"block",marginBottom:12}},"\u29B5"),
-          e("div",{style:{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:16,color:"#fff",marginBottom:6}},
-            "Processando\u2026"),
-          e("div",{className:"pulse",style:{fontSize:13,color:"#ffffff55"}},
-            "A API est\u00e1 convertendo seu v\u00eddeo para MP3")
-        ),
-
-        /* Done */
-        phase==="done" && e(DownloadCard,{result:result,onReset:reset}),
-
-        /* Info box */
-        (phase==="idle"||phase==="ready") && e("div",{style:{
-          marginTop:8,
-          background:"rgba(255,255,255,0.02)",
-          border:"1px solid rgba(255,255,255,0.06)",
-          borderRadius:12,padding:"14px 18px",
-          fontSize:12,color:"#ffffff33",lineHeight:1.7,
-        }},
-          "\uD83D\uDCA1 Suporte atual: ",e("strong",{style:{color:"#ffffff55"}},"YouTube MP3"),
-          " | Thumbnail HD\u00a0\u00a0\u00b7\u00a0\u00a0",
-          "Outras redes e formatos (MP4, Corte, Legendas) requerem backend pr\u00f3prio."
-        )
+        /* Thumbnail (YouTube only) */
+        isYT && e("button",{
+          onClick:handleThumb,
+          style:{
+            width:"100%",padding:"11px 24px",
+            border:"1px solid rgba(245,158,11,0.3)",borderRadius:13,
+            color:"#F59E0B",fontSize:13,fontFamily:"'Syne',sans-serif",fontWeight:600,
+            cursor:"pointer",background:"rgba(245,158,11,0.05)",
+            display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+          }
+        },"🖼️  Abrir Thumbnail HD")
       ),
 
-      /* ══ TAB INFO ══ */
-      tab==="info" && e("div",{className:"fade-in",style:{paddingTop:16}},
-        e("div",{style:glass({padding:28,marginBottom:16})},
-          e("h2",{style:{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:20,color:"#fff",marginBottom:16}},
-            "\u2139\uFE0F Sobre o MediaTool Pro"),
-          [
-            ["\uD83C\uDFB5","MP3 Real","Integrado com YouTube MP36 via RapidAPI. O link de download é direto, sem redirecionamentos."],
-            ["\uD83D\uDDBC\uFE0F","Thumbnail HD","Extrai a imagem de capa em máxima resolução (1280×720) direto dos servidores do YouTube."],
-            ["\uD83D\uDD12","Chave de API","A chave fica no frontend por enquanto. Para produção, recomenda-se um proxy backend para protegê-la."],
-            ["\uD83D\uDE80","Próximos passos","MP4, corte de vídeo e legendas precisam de um servidor Node.js com yt-dlp. Posso gerar isso também!"],
-          ].map(function(row){
-            return e("div",{key:row[0],style:{display:"flex",gap:14,marginBottom:16,alignItems:"flex-start"}},
-              e("span",{style:{fontSize:24,flexShrink:0}},row[0]),
-              e("div",null,
-                e("div",{style:{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14,color:"#fff",marginBottom:3}},row[1]),
-                e("div",{style:{fontSize:13,color:"#ffffff55",lineHeight:1.6}},row[2])
-              )
-            );
-          })
-        )
+      /* ── Loading spinner ── */
+      phase==="loading" && e("div",{className:"fade-in",style:glass({
+        padding:28,marginBottom:20,textAlign:"center"})},
+        e("div",{className:"spin",style:{fontSize:32,marginBottom:10}},"⟳"),
+        e("div",{style:{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:15,color:"#fff",marginBottom:5}},
+          "Processando..."),
+        e("div",{className:"pulse",style:{fontSize:12,color:"#ffffff44"}},msg||"Aguarde...")
       ),
 
-      /* Footer */
+      /* ── Result ── */
+      phase==="done" && e(ResultCard,{items:items,subtitle:sub,onReset:function(){
+        setUrl("");setPlat(null);setPhase("idle");setItems(null);setMsg(null);setThumb(null);
+      }}),
+
+      /* ── Supported platforms info ── */
+      phase==="idle" && e("div",{className:"fade-in",style:{
+        display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:10,marginTop:8
+      }},
+        [
+          {icon:"🎵",title:"YouTube → MP3",desc:"Até 320kbps, alta qualidade",color:"#A855F7",ok:true},
+          {icon:"📸",title:"Instagram",desc:"Fotos, vídeos e Reels",color:"#E1306C",ok:true},
+          {icon:"🎬",title:"YouTube → MP4",desc:"Em breve (requer nova API)",color:"#3B82F6",ok:false},
+          {icon:"♪",title:"TikTok",desc:"Em breve",color:"#69C9D0",ok:false},
+        ].map(function(item){
+          return e("div",{key:item.title,style:{
+            background:"rgba(255,255,255,0.025)",
+            border:"1px solid rgba(255,255,255,0.06)",
+            borderRadius:12,padding:"14px 16px",
+            opacity:item.ok?1:0.45,
+          }},
+            e("div",{style:{fontSize:22,marginBottom:6}},item.icon),
+            e("div",{style:{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:13,color:"#fff",marginBottom:3}},item.title),
+            e("div",{style:{fontSize:11,color:"#ffffff44"}},item.desc),
+            e("div",{style:{marginTop:8,fontSize:10,fontWeight:600,
+              color:item.ok?"#10B981":"#ffffff33"}},
+              item.ok?"✓ Disponível":"⏳ Em breve")
+          );
+        })
+      ),
+
+      /* ── Footer ── */
       e("footer",{style:{borderTop:"1px solid rgba(255,255,255,0.06)",
-        marginTop:40,paddingTop:24,display:"flex",justifyContent:"space-between",
-        alignItems:"center",flexWrap:"wrap",gap:12}},
-        e("div",{style:{fontSize:12,color:"#ffffff33"}},"\u00a9 2026 MediaTool Pro \u00b7 Para uso educacional e criativo"),
-        e("div",{style:{fontSize:12,color:"#ffffff22"}},"Powered by RapidAPI \u00b7 YouTube MP36")
+        marginTop:44,paddingTop:20,display:"flex",justifyContent:"space-between",
+        alignItems:"center",flexWrap:"wrap",gap:10}},
+        e("div",{style:{fontSize:11,color:"#ffffff22"}},"© 2026 MediaTool Pro · Uso educacional e criativo"),
+        e("div",{style:{fontSize:11,color:"#ffffff22"}},"Powered by RapidAPI")
       )
     )
   );
