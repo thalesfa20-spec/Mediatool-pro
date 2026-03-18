@@ -39,6 +39,20 @@
     .merge-bar { height:6px; background:#ffffff10; border-radius:3px; overflow:hidden; margin-top:10px; }
     .merge-fill { height:100%; border-radius:3px; background:linear-gradient(90deg,#3B82F6,#A855F7); transition:width .3s ease; }
   </style>
+  <script>
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('./sw.js').then(function(reg){
+      if(!reg.active){
+        navigator.serviceWorker.addEventListener('controllerchange', function(){
+          if(!sessionStorage.getItem('sw-reloaded')){
+            sessionStorage.setItem('sw-reloaded','1');
+            location.reload();
+          }
+        });
+      }
+    }).catch(function(e){ console.warn('SW falhou:', e); });
+  }
+  </script>
 </head>
 <body>
 <div id="root"></div>
@@ -488,15 +502,7 @@ function App(){
     var fetchFile = window.FFmpegUtil && window.FFmpegUtil.fetchFile;
 
     if(!FFmpeg || !fetchFile){
-      // FFmpeg not loaded yet — fallback to separate downloads
-      setPhase("done"); setMsg(null);
-      setItems([
-        {label:"Baixar Vídeo "+quality+" (sem áudio)", url:videoUrl, quality:quality},
-        {label:"Baixar Áudio separado", url:audioUrl, quality:"AAC"},
-      ]);
-      setSub(title+" · FFmpeg não carregou — baixe separado");
-      setMtype("warn");
-      setMsg("FFmpeg não carregou. Baixe os dois arquivos separados e combine no CapCut.");
+      setErr("FFmpeg não carregou. Recarregue a página e tente novamente.");
       return;
     }
 
@@ -516,6 +522,11 @@ function App(){
     ffmpeg.load({
       coreURL: "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js",
       wasmURL: "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm",
+    }).catch(function(){
+      return ffmpeg.load({
+        coreURL: "https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js",
+        wasmURL: "https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm",
+      });
     })
     .then(function(){
       setMsg("Baixando vídeo "+quality+"... (pode demorar) ⬇️");
