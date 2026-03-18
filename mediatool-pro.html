@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MediaTool Pro v4 — Para Criadores de Conteúdo</title>
+  <title>MediaTool Pro v5 — Para Criadores de Conteúdo</title>
   <meta name="description" content="Baixe vídeos e áudios do YouTube, Instagram, TikTok e mais." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
@@ -300,53 +300,140 @@ function App(){
     setSub(titleStr||"");
   }
 
-  /* ── YouTube MP3 via Claude AI ── */
+  /* ══════════════════════════════════════════════════════
+     PIPED API — instâncias públicas com CORS aberto
+     Retorna streams diretos do YouTube (video+audio separados)
+     + FFmpeg.wasm para juntar em arquivo único no browser
+  ══════════════════════════════════════════════════════ */
+  var PIPED_INSTANCES = [
+    "https://pipedapi.kavin.rocks",
+    "https://piped-api.garudalinux.org",
+    "https://api.piped.projectsegfau.lt",
+    "https://pipedapi.coldforge.xyz",
+    "https://piped.syncpundit.io/api",
+    "https://api.piped.yt",
+  ];
+
+  function fetchPiped(vid){
+    // Try each instance in sequence
+    function tryIdx(i){
+      if(i>=PIPED_INSTANCES.length) return Promise.reject(new Error("Todas instâncias Piped falharam"));
+      var inst = PIPED_INSTANCES[i];
+      return fetch(inst+"/streams/"+vid, {
+        signal: (typeof AbortSignal!=="undefined"&&AbortSignal.timeout) ? AbortSignal.timeout(9000) : undefined
+      })
+      .then(function(r){
+        if(!r.ok) throw new Error(inst+" status "+r.status);
+        return r.json();
+      })
+      .then(function(data){
+        if(!data||(!data.videoStreams&&!data.audioStreams))
+          throw new Error("resposta vazia de "+inst);
+        console.log("Piped OK via", inst, "| vStreams:", (data.videoStreams||[]).length, "aStreams:", (data.audioStreams||[]).length);
+        return data;
+      })
+      .catch(function(err){
+        console.warn("Piped", inst, "falhou:", err.message);
+        return tryIdx(i+1);
+      });
+    }
+    return tryIdx(0);
+  }
+
+  /* Escolhe o melhor stream de vídeo para a qualidade pedida */
+  function pickVideoStream(videoStreams, wantedQual){
+    if(!videoStreams||!videoStreams.length) return null;
+    // Piped qualityLabel ex: "1080p", "720p60", "480p"
+    // Prefer exact match, then next lower
+    var order = ["2160p","1440p","1080p","720p","480p","360p","240p","144p"];
+    var wIdx = order.indexOf(wantedQual);
+    // filter to mp4 video streams only
+    var mp4v = videoStreams.filter(function(s){
+      return s.url && (s.mimeType||"").indexOf("video/mp4")>-1;
+    });
+    if(!mp4v.length) mp4v = videoStreams.filter(function(s){ return s.url; });
+    // sort by resolution desc
+    mp4v.sort(function(a,b){ return (parseInt(b.quality)||0)-(parseInt(a.quality)||0); });
+    // exact match
+    var exact = mp4v.filter(function(s){ return (s.quality||"").indexOf(wantedQual)>-1; });
+    if(exact.length) return exact[0];
+    // best available at or below wanted
+    for(var qi=wIdx; qi<order.length; qi++){
+      var q = order[qi];
+      var match = mp4v.filter(function(s){ return (s.quality||"").indexOf(q)>-1; });
+      if(match.length) return match[0];
+    }
+    return mp4v[0]||null;
+  }
+
+  /* Escolhe o melhor stream de áudio */
+  function pickAudioStream(audioStreams){
+    if(!audioStreams||!audioStreams.length) return null;
+    // Prefer m4a/mp4 audio, highest bitrate
+    var sorted = audioStreams.slice().sort(function(a,b){
+      return (parseInt(b.bitrate)||0)-(parseInt(a.bitrate)||0);
+    });
+    var m4a = sorted.filter(function(s){ return s.url&&((s.mimeType||"").indexOf("audio/mp4")>-1||(s.mimeType||"").indexOf("audio/m4a")>-1); });
+    return m4a[0]||sorted[0]||null;
+  }
+
+  /* ── YouTube MP3: Piped áudio + FFmpeg → MP3 ── */
   function doMP3(){
     var vid=getYTId(url);
     if(!vid){ setErr("ID do vídeo não encontrado."); return; }
-    setLoad("🤖 Claude está buscando o MP3...");
-    callClaudeForDownload("mp3", vid, url)
-      .then(function(result){
-        if(result.links&&result.links.length){
-          finish(result.links, (result.title||"Áudio")+" · MP3 · YouTube");
-        } else {
-          showFallback("mp3", vid);
-        }
+    setLoad("Buscando streams... 🎵");
+
+    fetchPiped(vid)
+      .then(function(data){
+        var title = data.title||"audio";
+        var audio = pickAudioStream(data.audioStreams);
+        if(!audio){ setErr("Nenhum stream de áudio encontrado."); return; }
+        setMsg("Extraindo áudio com FFmpeg... ⏳");
+        doFFmpegExtractAudio(audio.url, title);
       })
-      .catch(function(e){ console.error(e); showFallback("mp3", vid); });
+      .catch(function(e){
+        console.error("doMP3 falhou:", e);
+        showFallback(vid);
+      });
   }
 
-  /* ══ callClaudeForDownload — usa Claude API com web_search para achar links ══ */
-  function callClaudeForDownload(type, vid, pageUrl){
-    var ytUrl = "https://www.youtube.com/watch?v="+vid;
-    var qualStr = type==="mp4" ? qual : "mp3";
-    var prompt = type==="mp3"
-      ? "Preciso baixar o áudio MP3 do vídeo do YouTube: "+ytUrl+"\n\nUse web search para encontrar o link de download direto MP3 deste vídeo via serviços como yt1s, y2mate, loader.to, mp3ify ou similares. Retorne APENAS JSON no formato:\n{\"title\":\"título do vídeo\",\"links\":[{\"label\":\"Baixar MP3\",\"url\":\"URL_DIRETA_DO_ARQUIVO\",\"quality\":\"320kbps\"}]}\n\nSe não encontrar link direto de arquivo, retorne {\"links\":[]}"
-      : "Preciso baixar o vídeo MP4 "+qualStr+" do YouTube: "+ytUrl+"\n\nUse web search para encontrar o link de download direto MP4 "+qualStr+" deste vídeo via serviços como yt1s, y2mate, loader.to, savefrom ou similares. Retorne APENAS JSON no formato:\n{\"title\":\"título do vídeo\",\"links\":[{\"label\":\"Baixar "+qualStr+"\",\"url\":\"URL_DIRETA_DO_ARQUIVO\",\"quality\":\""+qualStr+"\"}]}\n\nSe não encontrar link direto de arquivo, retorne {\"links\":[]}";
+  /* ── YouTube MP4: Piped vídeo+áudio → FFmpeg merge ── */
+  function doMP4(){
+    var vid=getYTId(url);
+    if(!vid){ setErr("ID do vídeo não encontrado."); return; }
+    setLoad("Buscando streams "+qual+"... 🎬");
 
-    return fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({
-        model:"claude-sonnet-4-20250514",
-        max_tokens:1000,
-        tools:[{type:"web_search_20250305",name:"web_search"}],
-        messages:[{role:"user",content:prompt}]
+    fetchPiped(vid)
+      .then(function(data){
+        var title = data.title||"video";
+        // Check for muxed streams first (≤480p, vídeo+áudio já juntos)
+        var muxed = (data.videoStreams||[]).filter(function(s){
+          return s.url && s.videoOnly===false && (s.mimeType||"").indexOf("video/mp4")>-1;
+        });
+        var exactMuxed = muxed.filter(function(s){ return (s.quality||"").indexOf(qual)>-1; });
+        if(exactMuxed.length){
+          // Download direto — já tem áudio junto
+          var s = exactMuxed[0];
+          finish([{label:"⬇ Baixar "+s.quality+" (vídeo+áudio)", url:s.url, quality:s.quality}],
+                 title+" · MP4 · YouTube");
+          return;
+        }
+        // 720p/1080p+ → video-only + audio → FFmpeg merge
+        var videoStream = pickVideoStream(data.videoStreams, qual);
+        var audioStream = pickAudioStream(data.audioStreams);
+        if(!videoStream){ setErr("Stream de vídeo não encontrado. Tente qualidade menor."); return; }
+        if(!audioStream){ setErr("Stream de áudio não encontrado."); return; }
+        console.log("Merging:", videoStream.quality, videoStream.mimeType, "+", audioStream.mimeType, audioStream.bitrate+"bps");
+        doFFmpegMerge(videoStream.url, audioStream.url, videoStream.quality||qual, title);
       })
-    })
-    .then(function(r){ return r.json(); })
-    .then(function(data){
-      var text = (data.content||[]).filter(function(b){return b.type==="text";}).map(function(b){return b.text;}).join("");
-      var clean = text.replace(/```json|```/g,"").trim();
-      // find JSON in response
-      var m = clean.match(/\{[\s\S]*\}/);
-      if(!m) return {links:[]};
-      try{ return JSON.parse(m[0]); } catch(e){ return {links:[]}; }
-    });
+      .catch(function(e){
+        console.error("doMP4 falhou:", e);
+        showFallback(vid);
+      });
   }
 
   /* ── Fallback UI com links externos ── */
-  function showFallback(type, vid){
+  function showFallback(vid){
     var ytUrl = "https://www.youtube.com/watch?v="+vid;
     setPhase("done"); setMsg(null);
     setItems([
@@ -354,24 +441,45 @@ function App(){
       {label:"Abrir no Y2Mate",       url:"https://www.y2mate.com/youtube/"+vid,                     quality:"↗"},
       {label:"Abrir no cobalt.tools", url:"https://cobalt.tools/?u="+encodeURIComponent(ytUrl),      quality:"↗"},
     ]);
-    setSub("Baixe via um desses serviços externos ↗");
+    setSub("Servidores indisponíveis — acesse via serviço externo:");
   }
 
-  /* ══ YouTube MP4 via Claude AI + fallbacks ══ */
-  function doMP4(){
-    var vid=getYTId(url);
-    if(!vid){ setErr("ID do vídeo não encontrado."); return; }
-    setLoad("🤖 Claude está buscando o vídeo "+qual+"...");
-
-    callClaudeForDownload("mp4", vid, url)
-      .then(function(result){
-        if(result.links&&result.links.length){
-          finish(result.links, (result.title||"Vídeo")+" · MP4 "+qual+" · YouTube");
-        } else {
-          showFallback("mp4", vid);
-        }
-      })
-      .catch(function(e){ console.error(e); showFallback("mp4", vid); });
+  /* ── FFmpeg: extrair áudio como MP3 ── */
+  function doFFmpegExtractAudio(audioUrl, title){
+    var FFmpeg = window.FFmpegWASM && window.FFmpegWASM.FFmpeg;
+    var fetchFile = window.FFmpegUtil && window.FFmpegUtil.fetchFile;
+    if(!FFmpeg||!fetchFile){
+      finish([{label:"⬇ Baixar Áudio (m4a)", url:audioUrl, quality:"AAC"}], title+" · Áudio · YouTube");
+      return;
+    }
+    setPhase("merging"); setMsg("Carregando FFmpeg... ⏳");
+    var ffmpeg = new FFmpeg();
+    ffmpeg.on("progress",function(p){ setMergeProgress(Math.round((p.progress||0)*100)); setMsg("Convertendo para MP3... "+Math.round((p.progress||0)*100)+"%"); });
+    ffmpeg.load({
+      coreURL:"https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js",
+      wasmURL:"https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm",
+    })
+    .then(function(){ setMsg("Baixando áudio... ⬇️"); return fetchFile(audioUrl); })
+    .then(function(d){ return ffmpeg.writeFile("input.m4a",d); })
+    .then(function(){
+      setMsg("Convertendo para MP3... 🎵");
+      return ffmpeg.exec(["-i","input.m4a","-codec:a","libmp3lame","-q:a","2","output.mp3"]);
+    })
+    .then(function(){ return ffmpeg.readFile("output.mp3"); })
+    .then(function(data){
+      var blob = new Blob([data.buffer],{type:"audio/mpeg"});
+      var burl = URL.createObjectURL(blob);
+      var a = document.createElement("a"); a.href=burl; a.download=(title||"audio")+".mp3";
+      document.body.appendChild(a); a.click();
+      setTimeout(function(){ URL.revokeObjectURL(burl); document.body.removeChild(a); },3000);
+      setPhase("done"); setMsg(null);
+      setItems([{label:"✅ MP3 baixado!", url:burl, quality:"MP3"}]);
+      setSub(title+" · MP3 · YouTube ✓");
+    })
+    .catch(function(){
+      // FFmpeg falhou — oferece m4a direto
+      finish([{label:"⬇ Baixar Áudio (m4a)", url:audioUrl, quality:"AAC"}], title+" · Áudio");
+    });
   }
 
   /* ── FFmpeg Merge (720p/1080p) ── */
