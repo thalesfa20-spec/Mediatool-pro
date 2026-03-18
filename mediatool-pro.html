@@ -9,6 +9,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.6/dist/umd/ffmpeg.js"></script>
+  <script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #060612; color: #f1f0ff; font-family: 'DM Sans', sans-serif; overflow-x: hidden; }
@@ -34,6 +36,8 @@
     .dl-btn:hover:not(:disabled) { opacity:.85 !important; transform:translateY(-1px); }
     .mode-btn { transition: all .18s; }
     .q-btn    { transition: all .18s; }
+    .merge-bar { height:6px; background:#ffffff10; border-radius:3px; overflow:hidden; margin-top:10px; }
+    .merge-fill { height:100%; border-radius:3px; background:linear-gradient(90deg,#3B82F6,#A855F7); transition:width .3s ease; }
   </style>
 </head>
 <body>
@@ -225,6 +229,7 @@ function App(){
   var _sub  =useState(""); var sub=_sub[0],setSub=_sub[1];
   var _mode =useState("mp3"); var mode=_mode[0],setMode=_mode[1];
   var _qual =useState("720p"); var qual=_qual[0],setQual=_qual[1];
+  var _mp   =useState(0); var mergeProgress=_mp[0],setMergeProgress=_mp[1];
 
   useEffect(function(){
     var p=getPlatform(url); setPlat(p); setItems(null); setMsg(null);
@@ -272,62 +277,174 @@ function App(){
     });
   }
 
-  /* ── YouTube MP4 ── */
+  /* ── YouTube MP4 ──
+     IMPORTANT: YouTube only provides muxed (video+audio) streams up to 480p.
+     720p and 1080p are ALWAYS video-only in adaptiveFormats.
+     We show muxed streams for the selected quality, OR if not available,
+     we show video+audio as two separate download buttons with clear labels.
+  ── */
   function doMP4(){
     var vid=getYTId(url);
     if(!vid){ setErr("ID do vídeo não encontrado."); return; }
-    setLoad("Buscando formatos de vídeo com áudio... 🎬");
+    setLoad("Buscando vídeo... 🎬");
+
     fetch("https://"+YTAPI_HOST+"/dl?id="+encodeURIComponent(vid),{method:"GET",headers:hdr(YTAPI_HOST)})
       .then(function(r){return r.json();})
       .then(function(data){
-        console.log("YT MP4:",JSON.stringify(data).slice(0,800));
+        console.log("YT MP4 raw:", JSON.stringify(data).slice(0,1000));
+        var title = data.title||"Vídeo";
 
-        // MUXED = video + audio together (data.formats)
+        // Collect ALL muxed streams (video+audio, usually up to 480p)
         var muxed=[];
-        if(data&&Array.isArray(data.formats)){
+        if(Array.isArray(data.formats)){
           data.formats.forEach(function(f){
             if(f.url&&(f.mimeType||"").indexOf("video/mp4")>-1&&f.qualityLabel)
-              muxed.push({label:"Baixar "+f.qualityLabel+" (vídeo+áudio)",url:f.url,quality:f.qualityLabel});
+              muxed.push({itag:f.itag,url:f.url,quality:f.qualityLabel,hasAudio:true});
           });
         }
 
-        // Use muxed first; fall back to adaptive only if nothing found
-        var pool=muxed.length?muxed:[];
-
-        // if still empty try adaptive (video-only as last resort)
-        if(!pool.length&&data&&Array.isArray(data.adaptiveFormats)){
+        // Collect adaptive video streams (video-only, 360p–1080p+)
+        var videoOnly=[];
+        // Collect adaptive audio streams
+        var audioOnly=[];
+        if(Array.isArray(data.adaptiveFormats)){
           data.adaptiveFormats.forEach(function(f){
-            if(f.url&&(f.mimeType||"").indexOf("video/mp4")>-1&&f.qualityLabel)
-              pool.push({label:"Baixar "+f.qualityLabel,url:f.url,quality:f.qualityLabel});
+            var mime=f.mimeType||"";
+            if(f.url&&mime.indexOf("video/mp4")>-1&&f.qualityLabel)
+              videoOnly.push({itag:f.itag,url:f.url,quality:f.qualityLabel});
+            if(f.url&&mime.indexOf("audio/mp4")>-1)
+              audioOnly.push({itag:f.itag,url:f.url,quality:f.audioQuality||"medium"});
           });
         }
 
-        var pref=pool.filter(function(l){return l.quality&&l.quality.indexOf(qual)>-1;});
-        var raw=pref.length?pref:pool;
-        var deduped=dedupeLinks(raw).slice(0,3);
+        console.log("muxed:", muxed.length, "videoOnly:", videoOnly.length, "audioOnly:", audioOnly.length);
 
-        if(deduped.length){
-          finish(deduped,(data.title||"Vídeo")+" · MP4 · YouTube");
+        // Try to find exact muxed match for selected quality
+        var exactMuxed = muxed.filter(function(f){ return f.quality.indexOf(qual)>-1; });
+
+        if(exactMuxed.length){
+          // Perfect: muxed stream at requested quality (360p/480p)
+          var links = dedupeLinks(exactMuxed.map(function(f){
+            return {label:"Baixar "+f.quality+" (vídeo+áudio)", url:f.url, quality:f.quality};
+          }));
+          finish(links, title+" · MP4 · YouTube");
+
         } else {
-          fetch("https://"+YTAPI_HOST+"/video?id="+encodeURIComponent(vid),{method:"GET",headers:hdr(YTAPI_HOST)})
-            .then(function(r2){return r2.json();})
-            .then(function(d2){
-              var lks=[];
-              if(d2&&d2.streamingData){
-                // prefer muxed formats first
-                var mux2=d2.streamingData.formats||[];
-                var adp2=d2.streamingData.adaptiveFormats||[];
-                var arr=mux2.length?mux2:adp2;
-                arr.forEach(function(f){
-                  if(f.url&&(f.mimeType||"").indexOf("video/mp4")>-1&&f.qualityLabel)
-                    lks.push({label:"Baixar "+f.qualityLabel+(mux2.length?" (vídeo+áudio)":""),url:f.url,quality:f.qualityLabel});
-                });
-              }
-              if(lks.length) finish(dedupeLinks(lks).slice(0,3),(d2.videoDetails&&d2.videoDetails.title||"Vídeo")+" · MP4");
-              else setErr("Não foi possível obter links. Tente MP3 ou outra qualidade.");
-            }).catch(function(){ setErr("Erro ao buscar formatos."); });
+          // 720p/1080p: separate video + audio — trigger auto-merge with FFmpeg.wasm
+          var targetVideo = videoOnly.filter(function(f){ return f.quality.indexOf(qual)>-1; });
+          if(!targetVideo.length) targetVideo = videoOnly.slice(0,3);
+          var bestAudio = audioOnly.length ? audioOnly[0] : null;
+          var bestVideoUrl = targetVideo.length ? targetVideo[0].url : null;
+
+          if(bestVideoUrl && bestAudio){
+            // Trigger FFmpeg merge automatically
+            doFFmpegMerge(bestVideoUrl, bestAudio.url, qual, title);
+          } else if(muxed.length){
+            finish(dedupeLinks(muxed.map(function(f){
+              return {label:"Baixar "+f.quality+" (vídeo+áudio)", url:f.url, quality:f.quality};
+            })).slice(0,2), title+" · MP4");
+          } else {
+            setErr("Não foi possível obter streams. Tente outra qualidade.");
+          }
         }
-      }).catch(function(){ setErr("Erro de rede."); });
+      })
+      .catch(function(){ setErr("Erro de rede ao buscar o vídeo."); });
+  }
+
+  /* ── FFmpeg Merge (720p/1080p) ── */
+  function doFFmpegMerge(videoUrl, audioUrl, quality, title){
+    setPhase("merging");
+    setMsg("Iniciando FFmpeg no navegador... ⚙️");
+    setMtype("loading");
+
+    var FFmpeg = window.FFmpegWASM && window.FFmpegWASM.FFmpeg;
+    var fetchFile = window.FFmpegUtil && window.FFmpegUtil.fetchFile;
+
+    if(!FFmpeg || !fetchFile){
+      // FFmpeg not loaded yet — fallback to separate downloads
+      setPhase("done"); setMsg(null);
+      setItems([
+        {label:"Baixar Vídeo "+quality+" (sem áudio)", url:videoUrl, quality:quality},
+        {label:"Baixar Áudio separado", url:audioUrl, quality:"AAC"},
+      ]);
+      setSub(title+" · FFmpeg não carregou — baixe separado");
+      setMtype("warn");
+      setMsg("FFmpeg não carregou. Baixe os dois arquivos separados e combine no CapCut.");
+      return;
+    }
+
+    var ffmpeg = new FFmpeg();
+    var mergeProgress = 0;
+
+    ffmpeg.on("progress", function(p){
+      mergeProgress = Math.round((p.progress||0)*100);
+      setMergeProgress(mergeProgress);
+      setMsg("Combinando vídeo e áudio... "+mergeProgress+"%");
+    });
+
+    ffmpeg.on("log", function(l){ console.log("[FFmpeg]", l.message); });
+
+    setMsg("Carregando FFmpeg (pode levar ~10s na primeira vez)... ⏳");
+
+    ffmpeg.load({
+      coreURL: "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js",
+      wasmURL: "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm",
+    })
+    .then(function(){
+      setMsg("Baixando vídeo "+quality+"... (pode demorar) ⬇️");
+      return fetchFile(videoUrl);
+    })
+    .then(function(videoData){
+      return ffmpeg.writeFile("video.mp4", videoData)
+        .then(function(){
+          setMsg("Baixando áudio... ⬇️");
+          return fetchFile(audioUrl);
+        })
+        .then(function(audioData){
+          return ffmpeg.writeFile("audio.mp4", audioData);
+        });
+    })
+    .then(function(){
+      setMsg("Combinando vídeo + áudio com FFmpeg... 🔧");
+      return ffmpeg.exec([
+        "-i","video.mp4",
+        "-i","audio.mp4",
+        "-c:v","copy",
+        "-c:a","aac",
+        "-shortest",
+        "output.mp4"
+      ]);
+    })
+    .then(function(){
+      setMsg("Gerando arquivo final... ✅");
+      return ffmpeg.readFile("output.mp4");
+    })
+    .then(function(data){
+      var blob = new Blob([data.buffer], {type:"video/mp4"});
+      var burl = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = burl;
+      a.download = (title||"video")+"-"+quality+".mp4";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function(){ URL.revokeObjectURL(burl); document.body.removeChild(a); }, 3000);
+      setPhase("done");
+      setMsg(null);
+      setItems([{label:"✅ "+quality+" com áudio — baixado!", url:burl, quality:quality}]);
+      setSub(title+" · "+quality+" · MP4 com áudio ✓");
+    })
+    .catch(function(err){
+      console.error("FFmpeg error:", err);
+      // Fallback: offer separate downloads
+      setPhase("done");
+      setItems([
+        {label:"Baixar Vídeo "+quality+" (sem áudio)", url:videoUrl, quality:quality},
+        {label:"Baixar Áudio separado", url:audioUrl, quality:"AAC"},
+      ]);
+      setSub(title+" · Merge falhou — baixe separado");
+      setMtype("warn");
+      setMsg("Merge automático falhou (CORS). Baixe os dois arquivos e combine no CapCut ou outro editor.");
+    });
   }
 
   /* ── Instagram ── */
@@ -543,7 +660,7 @@ function App(){
       ),
 
       /* Alert */
-      msg&&phase!=="done"&&e(Alert,{msg:msg,type:mtype}),
+      msg&&e(Alert,{msg:msg,type:mtype}),
 
       /* Action buttons */
       canAct&&e("div",{className:"fade-in",style:{display:"flex",flexDirection:"column",gap:9,marginBottom:18}},
@@ -587,6 +704,29 @@ function App(){
         e("div",{className:"spin",style:{fontSize:30,marginBottom:10}},"⟳"),
         e("div",{style:{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:15,color:"#fff",marginBottom:5}},"Processando..."),
         e("div",{className:"pulse",style:{fontSize:12,color:"#ffffff44"}},msg||"Aguarde...")
+      ),
+
+      /* Merging (FFmpeg) */
+      phase==="merging"&&e("div",{className:"fade-in",style:gl({padding:28,marginBottom:18})},
+        e("div",{style:{display:"flex",alignItems:"center",gap:12,marginBottom:16}},
+          e("span",{className:"spin",style:{fontSize:26,color:"#3B82F6"}},"⟳"),
+          e("div",null,
+            e("div",{style:{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:15,color:"#fff"}},"Juntando vídeo + áudio..."),
+            e("div",{style:{fontSize:12,color:"#ffffff55",marginTop:3}},"FFmpeg rodando no navegador — não feche esta aba!")
+          )
+        ),
+        e("div",{style:{fontSize:13,color:"#60A5FA",marginBottom:10,animation:"pulse 1.5s ease infinite"}},msg||"Processando..."),
+        e("div",{className:"merge-bar"},
+          e("div",{className:"merge-fill",style:{width:mergeProgress+"%"}})
+        ),
+        e("div",{style:{display:"flex",justifyContent:"space-between",fontSize:11,color:"#ffffff33",marginTop:6}},
+          e("span",null,"0%"),
+          e("span",{style:{color:"#3B82F6",fontWeight:600}},mergeProgress+"%"),
+          e("span",null,"100%")
+        ),
+        e("div",{style:{marginTop:14,fontSize:11,color:"#ffffff22",textAlign:"center"}},
+          "Primeira vez pode levar 30-60s para carregar o FFmpeg · Próximas vezes são mais rápidas"
+        )
       ),
 
       /* Result */
