@@ -359,29 +359,44 @@ function App(){
     var qualNum = qual.replace("p","");
 
     /* Múltiplas instâncias públicas do Cobalt */
+    // Cobalt API v2 — instâncias públicas
     var COBALT_INSTANCES = [
       "https://api.cobalt.tools",
       "https://cobalt.api.timelessnesses.me",
       "https://cobalt-api.asm3.org",
-      "https://co.wuk.sh",
+      "https://cobalt.synzr.space",
+      "https://cobalt.lunar.icu",
     ];
 
     function tryCobaltInstance(idx){
       if(idx>=COBALT_INSTANCES.length) return Promise.reject(new Error("Cobalt: todas instâncias falharam"));
       var base = COBALT_INSTANCES[idx];
-      setMsg("Cobalt "+(idx+1)+"/"+COBALT_INSTANCES.length+"... ⏳");
+      setMsg("Tentando servidor "+(idx+1)+"/"+COBALT_INSTANCES.length+"... ⏳");
+
+      // Cobalt API v2 format
+      var body = JSON.stringify({
+        url: ytUrl,
+        videoQuality: qualNum,
+        filenameStyle: "basic",
+        downloadMode: "auto",
+        youtubeVideoCodec: "h264"
+      });
+
       return fetch(base+"/", {
-        method:"POST",
-        headers:{"Content-Type":"application/json","Accept":"application/json"},
-        body:JSON.stringify({url:ytUrl, videoQuality:qualNum, filenameStyle:"basic", downloadMode:"auto"})
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        body: body
       })
       .then(function(r){
+        if(r.status===400) return r.json().then(function(e){ throw new Error(base+" 400: "+(e.error&&e.error.code||JSON.stringify(e))); });
         if(!r.ok) throw new Error(base+" HTTP "+r.status);
         return r.json();
       })
       .then(function(data){
-        console.log("Cobalt", base, "response:", JSON.stringify(data).slice(0,300));
-        // status: stream | redirect | tunnel | picker | error
+        console.log("Cobalt", base, "->", JSON.stringify(data).slice(0,300));
         if(data.url) return {url:data.url, quality:qual};
         if(data.status==="stream"||data.status==="redirect"||data.status==="tunnel"){
           var u=data.url||data.tunnel; if(u) return {url:u,quality:qual};
@@ -390,7 +405,7 @@ function App(){
           var v=data.picker.find(function(p){return p.type==="video";})||data.picker[0];
           if(v&&v.url) return {url:v.url,quality:qual};
         }
-        throw new Error("Cobalt "+base+": "+JSON.stringify(data).slice(0,200));
+        throw new Error("Cobalt "+base+" resposta inesperada: "+JSON.stringify(data).slice(0,150));
       })
       .catch(function(e){
         console.warn(e.message);
