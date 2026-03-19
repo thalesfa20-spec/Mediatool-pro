@@ -349,142 +349,112 @@ function App(){
     });
   }
 
-  /* ── YouTube MP4 — Invidious em série + RapidAPI + Cobalt ── */
+  /* ── YouTube MP4 — Cobalt instances + RapidAPI ── */
   function doMP4(){
     var vid=getYTId(url);
     if(!vid){ setErr("ID do vídeo não encontrado."); return; }
-    setLoad("Buscando streams... 🎬");
+    setLoad("Buscando vídeo... 🎬");
 
-    /* Invidious: testa cada instância em série até uma responder */
-    var INV_LIST = [
-      "https://invidious.fdn.fr",
-      "https://inv.nadeko.net",
-      "https://invidious.nerdvpn.de",
-      "https://iv.datura.network",
-      "https://invidious.privacydev.net",
-      "https://yt.cdaut.de",
-      "https://invidious.lunar.icu",
-      "https://invidious.io",
+    var ytUrl = "https://www.youtube.com/watch?v="+vid;
+    var qualNum = qual.replace("p","");
+
+    /* Múltiplas instâncias públicas do Cobalt */
+    var COBALT_INSTANCES = [
+      "https://api.cobalt.tools",
+      "https://cobalt.api.timelessnesses.me",
+      "https://cobalt-api.asm3.org",
+      "https://co.wuk.sh",
     ];
-    function tryInvidiousSeries(idx){
-      if(idx>=INV_LIST.length) return Promise.reject(new Error("Todas instâncias Invidious falharam"));
-      var inst = INV_LIST[idx];
-      setMsg("Tentando servidor "+(idx+1)+"/"+INV_LIST.length+"... ⏳");
-      return fetch(inst+"/api/v1/videos/"+vid+"?fields=title,adaptiveFormats,formatStreams")
-        .then(function(r){
-          if(!r.ok) throw new Error(inst+" status "+r.status);
-          return r.json();
-        })
-        .then(function(data){
-          if(!data||(!data.formatStreams&&!data.adaptiveFormats)) throw new Error("resposta vazia");
-          console.log("Invidious OK:", inst);
-          var formats=(data.formatStreams||[]).map(function(f){
-            return {url:f.url,mimeType:f.type||"video/mp4",qualityLabel:f.qualityLabel||f.quality,itag:f.itag};
-          });
-          var adaptive=(data.adaptiveFormats||[]).map(function(f){
-            return {url:f.url,mimeType:f.type||"",qualityLabel:f.qualityLabel||f.quality,audioQuality:f.audioQuality,itag:f.itag};
-          });
-          return {title:data.title||"Vídeo",formats:formats,adaptiveFormats:adaptive};
-        })
-        .catch(function(e){
-          console.warn(inst,"falhou:",e.message);
-          return tryInvidiousSeries(idx+1);
-        });
+
+    function tryCobaltInstance(idx){
+      if(idx>=COBALT_INSTANCES.length) return Promise.reject(new Error("Cobalt: todas instâncias falharam"));
+      var base = COBALT_INSTANCES[idx];
+      setMsg("Cobalt "+(idx+1)+"/"+COBALT_INSTANCES.length+"... ⏳");
+      return fetch(base+"/", {
+        method:"POST",
+        headers:{"Content-Type":"application/json","Accept":"application/json"},
+        body:JSON.stringify({url:ytUrl, videoQuality:qualNum, filenameStyle:"basic", downloadMode:"auto"})
+      })
+      .then(function(r){
+        if(!r.ok) throw new Error(base+" HTTP "+r.status);
+        return r.json();
+      })
+      .then(function(data){
+        console.log("Cobalt", base, "response:", JSON.stringify(data).slice(0,300));
+        // status: stream | redirect | tunnel | picker | error
+        if(data.url) return {url:data.url, quality:qual};
+        if(data.status==="stream"||data.status==="redirect"||data.status==="tunnel"){
+          var u=data.url||data.tunnel; if(u) return {url:u,quality:qual};
+        }
+        if(data.status==="picker"&&data.picker){
+          var v=data.picker.find(function(p){return p.type==="video";})||data.picker[0];
+          if(v&&v.url) return {url:v.url,quality:qual};
+        }
+        throw new Error("Cobalt "+base+": "+JSON.stringify(data).slice(0,200));
+      })
+      .catch(function(e){
+        console.warn(e.message);
+        return tryCobaltInstance(idx+1);
+      });
     }
 
     /* RapidAPI via proxy */
     function tryRapidAPI(){
+      setMsg("Tentando RapidAPI... ⏳");
       return rapidFetch(YTAPI_HOST, "/dl?id="+encodeURIComponent(vid))
         .then(function(r){return r.json();})
         .then(function(data){
           if(!data||(!data.formats&&!data.adaptiveFormats&&!data.title)) throw new Error("empty");
-          return data;
+          var muxed=[], videoOnly=[], audioOnly=[];
+          (data.formats||[]).forEach(function(f){
+            if(f.url&&(f.mimeType||"").indexOf("video/mp4")>-1&&f.qualityLabel)
+              muxed.push({url:f.url,quality:f.qualityLabel});
+          });
+          (data.adaptiveFormats||[]).forEach(function(f){
+            var mime=f.mimeType||"";
+            if(f.url&&mime.indexOf("video/mp4")>-1&&f.qualityLabel)
+              videoOnly.push({url:f.url,quality:f.qualityLabel});
+            if(f.url&&(mime.indexOf("audio/mp4")>-1||mime.indexOf("audio/webm")>-1))
+              audioOnly.push({url:f.url,quality:"medium"});
+          });
+          var title=data.title||"Vídeo";
+          var exactMuxed=muxed.filter(function(f){return f.quality.indexOf(qual)>-1;});
+          if(exactMuxed.length) return {_muxed:true,url:exactMuxed[0].url,quality:exactMuxed[0].quality,title:title};
+          var targetVid=videoOnly.filter(function(f){return f.quality.indexOf(qual)>-1;});
+          if(!targetVid.length) targetVid=videoOnly.slice(0,1);
+          if(targetVid.length&&audioOnly.length) return {_merge:true,vUrl:targetVid[0].url,aUrl:audioOnly[0].url,quality:qual,title:title};
+          if(muxed.length) return {_muxed:true,url:muxed[0].url,quality:muxed[0].quality,title:title};
+          throw new Error("sem streams");
         });
     }
 
-    /* Cobalt */
-    function tryCobalt(){
-      return fetch("https://api.cobalt.tools/",{
-        method:"POST",
-        headers:{"Content-Type":"application/json","Accept":"application/json"},
-        body:JSON.stringify({url:"https://www.youtube.com/watch?v="+vid, videoQuality:qual.replace("p",""), filenameStyle:"basic"})
-      }).then(function(r){return r.json();})
-        .then(function(data){
-          if(data.status==="stream"||data.status==="redirect"){
-            var dlUrl=data.url||data.tunnel;
-            if(dlUrl) return {_cobalt:true,url:dlUrl,quality:qual};
-          }
-          if(data.status==="picker"&&data.picker){
-            var v=data.picker.find(function(p){return p.type==="video";});
-            if(v&&v.url) return {_cobalt:true,url:v.url,quality:qual};
-          }
-          throw new Error("Cobalt: "+JSON.stringify(data).slice(0,200));
-        });
-    }
-
-    function processYTData(data){
-      var title=data.title||"Vídeo";
-      if(data._cobalt){
-        finish([{label:"Baixar "+data.quality+" (vídeo+áudio)",url:data.url,quality:data.quality}],title+" · MP4 · YouTube");
-        return;
-      }
-      var muxed=[];
-      (data.formats||[]).forEach(function(f){
-        if(f.url&&(f.mimeType||"").indexOf("video/mp4")>-1&&f.qualityLabel)
-          muxed.push({itag:f.itag,url:f.url,quality:f.qualityLabel});
-      });
-      var videoOnly=[], audioOnly=[];
-      (data.adaptiveFormats||[]).forEach(function(f){
-        var mime=f.mimeType||"";
-        if(f.url&&mime.indexOf("video/mp4")>-1&&f.qualityLabel)
-          videoOnly.push({itag:f.itag,url:f.url,quality:f.qualityLabel});
-        if(f.url&&(mime.indexOf("audio/mp4")>-1||mime.indexOf("audio/webm")>-1))
-          audioOnly.push({itag:f.itag,url:f.url,quality:f.audioQuality||"medium"});
-      });
-      console.log("muxed:",muxed.length,"videoOnly:",videoOnly.length,"audioOnly:",audioOnly.length);
-      var exactMuxed=muxed.filter(function(f){return f.quality.indexOf(qual)>-1;});
-      if(exactMuxed.length){
-        finish(dedupeLinks(exactMuxed.map(function(f){
-          return {label:"Baixar "+f.quality+" (vídeo+áudio)",url:f.url,quality:f.quality};
-        })),title+" · MP4 · YouTube");
-        return;
-      }
-      var targetVideo=videoOnly.filter(function(f){return f.quality.indexOf(qual)>-1;});
-      if(!targetVideo.length) targetVideo=videoOnly.slice(0,3);
-      var bestAudio=audioOnly.length?audioOnly[0]:null;
-      var bestVideoUrl=targetVideo.length?targetVideo[0].url:null;
-      if(bestVideoUrl&&bestAudio){
-        doFFmpegMerge(bestVideoUrl,bestAudio.url,qual,title);
-      } else if(muxed.length){
-        finish(dedupeLinks(muxed.map(function(f){
-          return {label:"Baixar "+f.quality+" (vídeo+áudio)",url:f.url,quality:f.quality};
-        })).slice(0,2),title+" · MP4");
+    function handleResult(result, title){
+      title = title||result.title||"Vídeo";
+      if(result._muxed){
+        finish([{label:"Baixar "+result.quality+" (vídeo+áudio)",url:result.url,quality:result.quality}],
+               title+" · MP4 · YouTube");
+      } else if(result._merge){
+        doFFmpegMerge(result.vUrl,result.aUrl,result.quality,title);
       } else {
-        setErr("Streams não encontrados. Tente outra qualidade.");
+        // Cobalt direct link
+        finish([{label:"Baixar "+result.quality+" (vídeo+áudio)",url:result.url,quality:result.quality}],
+               "Vídeo · MP4 "+result.quality+" · YouTube");
       }
     }
 
-    /* Sequência: Invidious (8 instâncias) → RapidAPI → Cobalt */
-    tryInvidiousSeries(0)
-      .then(processYTData)
+    /* Sequência: Cobalt (4 instâncias) → RapidAPI */
+    tryCobaltInstance(0)
+      .then(function(r){ handleResult(r); })
       .catch(function(e1){
-        console.warn("Invidious falhou:",e1.message,"— tentando RapidAPI...");
-        setMsg("Tentando RapidAPI... ⏳");
-        return tryRapidAPI()
-          .then(processYTData)
+        console.warn("Cobalt falhou:", e1.message);
+        tryRapidAPI()
+          .then(function(r){ handleResult(r,r.title); })
           .catch(function(e2){
-            console.warn("RapidAPI falhou:",e2.message,"— tentando Cobalt...");
-            setMsg("Tentando Cobalt... ⏳");
-            return tryCobalt()
-              .then(processYTData)
-              .catch(function(e3){
-                console.error("Todas falharam:",e1.message,e2.message,e3.message);
-                setErr("Todos os servidores estão indisponíveis. Tente novamente em alguns minutos.");
-              });
+            console.error("Tudo falhou:", e1.message, e2.message);
+            setErr("Não foi possível buscar o vídeo. Verifique o console (F12) e tente novamente.");
           });
       });
   }
-
   /* ── FFmpeg Merge (720p/1080p) ── */
   function doFFmpegMerge(videoUrl, audioUrl, quality, title){
     setPhase("merging");
